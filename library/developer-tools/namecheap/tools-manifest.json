@@ -1,0 +1,470 @@
+{
+  "api_name": "namecheap",
+  "base_url": "https://api.namecheap.com",
+  "description": "Curated OpenAPI description for Namecheap's XML API. The real API uses a single\nendpoint (`/xml.response`) with a `Command` query parameter plus Namecheap's\nquery-string authentication parameters (`ApiUser`, `ApiKey`, `UserName`, `ClientIp`).\nGeneration uses command-shaped pseudo paths that are normalized back to `/xml.response`\nby the Namecheap printed CLI patch layer.",
+  "mcp_ready": "full",
+  "http_transport": "standard",
+  "auth": {
+    "type": "api_key",
+    "header": "ApiKey",
+    "in": "query",
+    "env_vars": [
+      "NAMECHEAP_API_KEY_QUERY"
+    ],
+    "env_var_specs": [
+      {
+        "name": "NAMECHEAP_API_KEY_QUERY",
+        "kind": "per_call",
+        "required": true,
+        "sensitive": true,
+        "inferred": true
+      }
+    ]
+  },
+  "required_headers": [],
+  "tools": [
+    {
+      "name": "xml-response_domains-check",
+      "description": "Check domain availability for one or more domains. Optional: DomainList.",
+      "method": "GET",
+      "path": "/xml.response/domains/check",
+      "params": [
+        {
+          "name": "DomainList",
+          "type": "string",
+          "location": "query",
+          "description": "Comma-separated list of domains (maximum 50 for domains.check)."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-create",
+      "description": "Runs `namecheap.domains.create`. This is a mutating paid operation; use dry-run unless intentionally registering. Optional: DomainName, Years, PromotionCode (plus 3 more).",
+      "method": "GET",
+      "path": "/xml.response/domains/create",
+      "params": [
+        {
+          "name": "DomainName",
+          "type": "string",
+          "location": "query",
+          "description": "Fully qualified domain name."
+        },
+        {
+          "name": "Years",
+          "type": "int",
+          "location": "query",
+          "description": "Years"
+        },
+        {
+          "name": "PromotionCode",
+          "type": "string",
+          "location": "query",
+          "description": "Promotion code"
+        },
+        {
+          "name": "AddFreeWhoisguard",
+          "type": "string",
+          "location": "query",
+          "description": "Add free whoisguard"
+        },
+        {
+          "name": "WGEnabled",
+          "type": "string",
+          "location": "query",
+          "description": "Wgenabled"
+        },
+        {
+          "name": "Nameservers",
+          "type": "string",
+          "location": "query",
+          "description": "Comma-separated nameservers"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-dns-get-email-forwarding",
+      "description": "Runs `namecheap.domains.dns.getEmailForwarding`. Optional: DomainName.",
+      "method": "GET",
+      "path": "/xml.response/dns/get-email-forwarding",
+      "params": [
+        {
+          "name": "DomainName",
+          "type": "string",
+          "location": "query",
+          "description": "Fully qualified domain name."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-dns-get-hosts",
+      "description": "Runs `namecheap.domains.dns.getHosts`. Optional: SLD, TLD.",
+      "method": "GET",
+      "path": "/xml.response/dns/get-hosts",
+      "params": [
+        {
+          "name": "SLD",
+          "type": "string",
+          "location": "query",
+          "description": "Second-level domain, without the TLD."
+        },
+        {
+          "name": "TLD",
+          "type": "string",
+          "location": "query",
+          "description": "Top-level domain without the leading dot."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-dns-get-list",
+      "description": "Get DNS nameserver type and nameservers. Optional: SLD, TLD.",
+      "method": "GET",
+      "path": "/xml.response/dns/get-list",
+      "params": [
+        {
+          "name": "SLD",
+          "type": "string",
+          "location": "query",
+          "description": "Second-level domain, without the TLD."
+        },
+        {
+          "name": "TLD",
+          "type": "string",
+          "location": "query",
+          "description": "Top-level domain without the leading dot."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-dns-set-custom",
+      "description": "Runs `namecheap.domains.dns.setCustom`. Optional: SLD, TLD, Nameservers.",
+      "method": "GET",
+      "path": "/xml.response/dns/set-custom",
+      "params": [
+        {
+          "name": "SLD",
+          "type": "string",
+          "location": "query",
+          "description": "Second-level domain, without the TLD."
+        },
+        {
+          "name": "TLD",
+          "type": "string",
+          "location": "query",
+          "description": "Top-level domain without the leading dot."
+        },
+        {
+          "name": "Nameservers",
+          "type": "string",
+          "location": "query",
+          "description": "Nameservers"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-dns-set-default",
+      "description": "Switch a domain to Namecheap default DNS. Optional: SLD, TLD.",
+      "method": "GET",
+      "path": "/xml.response/dns/set-default",
+      "params": [
+        {
+          "name": "SLD",
+          "type": "string",
+          "location": "query",
+          "description": "Second-level domain, without the TLD."
+        },
+        {
+          "name": "TLD",
+          "type": "string",
+          "location": "query",
+          "description": "Top-level domain without the leading dot."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-dns-set-hosts",
+      "description": "Runs `namecheap.domains.dns.setHosts`; HostName1/RecordType1/Address1/TTL1 style parameters can be passed via --param-json in the patched CLI. Optional: SLD, TLD.",
+      "method": "GET",
+      "path": "/xml.response/dns/set-hosts",
+      "params": [
+        {
+          "name": "SLD",
+          "type": "string",
+          "location": "query",
+          "description": "Second-level domain, without the TLD."
+        },
+        {
+          "name": "TLD",
+          "type": "string",
+          "location": "query",
+          "description": "Top-level domain without the leading dot."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-get-contacts",
+      "description": "Runs `namecheap.domains.getContacts`. Optional: DomainName.",
+      "method": "GET",
+      "path": "/xml.response/domains/get-contacts",
+      "params": [
+        {
+          "name": "DomainName",
+          "type": "string",
+          "location": "query",
+          "description": "Fully qualified domain name."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-get-info",
+      "description": "Runs `namecheap.domains.getInfo` for a domain. Optional: DomainName.",
+      "method": "GET",
+      "path": "/xml.response/domains/get-info",
+      "params": [
+        {
+          "name": "DomainName",
+          "type": "string",
+          "location": "query",
+          "description": "Fully qualified domain name."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-get-list",
+      "description": "Runs `namecheap.domains.getList` with paging and optional filters. Optional: Page, PageSize, SortBy (plus 2 more).",
+      "method": "GET",
+      "path": "/xml.response/domains/get-list",
+      "params": [
+        {
+          "name": "Page",
+          "type": "int",
+          "location": "query",
+          "description": "Page"
+        },
+        {
+          "name": "PageSize",
+          "type": "int",
+          "location": "query",
+          "description": "Page size"
+        },
+        {
+          "name": "SortBy",
+          "type": "string",
+          "location": "query",
+          "description": "Sort by"
+        },
+        {
+          "name": "SearchTerm",
+          "type": "string",
+          "location": "query",
+          "description": "Domain search term"
+        },
+        {
+          "name": "ListType",
+          "type": "string",
+          "location": "query",
+          "description": "ALL"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-get-registrar-lock",
+      "description": "Runs `namecheap.domains.getRegistrarLock`. Optional: DomainName.",
+      "method": "GET",
+      "path": "/xml.response/domains/get-registrar-lock",
+      "params": [
+        {
+          "name": "DomainName",
+          "type": "string",
+          "location": "query",
+          "description": "Fully qualified domain name."
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-get-tld-list",
+      "description": "Runs `namecheap.domains.getTldList`.",
+      "method": "GET",
+      "path": "/xml.response/domains/get-tld-list",
+      "params": []
+    },
+    {
+      "name": "xml-response_domains-renew",
+      "description": "Runs `namecheap.domains.renew`. Mutating paid operation. Optional: DomainName, Years, PromotionCode.",
+      "method": "GET",
+      "path": "/xml.response/domains/renew",
+      "params": [
+        {
+          "name": "DomainName",
+          "type": "string",
+          "location": "query",
+          "description": "Fully qualified domain name."
+        },
+        {
+          "name": "Years",
+          "type": "int",
+          "location": "query",
+          "description": "Years"
+        },
+        {
+          "name": "PromotionCode",
+          "type": "string",
+          "location": "query",
+          "description": "Promotion code"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_domains-set-registrar-lock",
+      "description": "Runs `namecheap.domains.setRegistrarLock`. Optional: DomainName, LockAction.",
+      "method": "GET",
+      "path": "/xml.response/domains/set-registrar-lock",
+      "params": [
+        {
+          "name": "DomainName",
+          "type": "string",
+          "location": "query",
+          "description": "Fully qualified domain name."
+        },
+        {
+          "name": "LockAction",
+          "type": "string",
+          "location": "query",
+          "description": "Lock action"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_ssl-get-info",
+      "description": "Get SSL certificate information. Optional: CertificateID, CertificateType.",
+      "method": "GET",
+      "path": "/xml.response/ssl/get-info",
+      "params": [
+        {
+          "name": "CertificateID",
+          "type": "int",
+          "location": "query",
+          "description": "Certificate id"
+        },
+        {
+          "name": "CertificateType",
+          "type": "string",
+          "location": "query",
+          "description": "Certificate type"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_ssl-get-list",
+      "description": "Runs `namecheap.ssl.getList`. Optional: Page, PageSize, ListType (plus 1 more).",
+      "method": "GET",
+      "path": "/xml.response/ssl/get-list",
+      "params": [
+        {
+          "name": "Page",
+          "type": "int",
+          "location": "query",
+          "description": "Page"
+        },
+        {
+          "name": "PageSize",
+          "type": "int",
+          "location": "query",
+          "description": "Page size"
+        },
+        {
+          "name": "ListType",
+          "type": "string",
+          "location": "query",
+          "description": "List type"
+        },
+        {
+          "name": "SearchTerm",
+          "type": "string",
+          "location": "query",
+          "description": "Search term"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_ssl-parse-csr",
+      "description": "Parse a certificate signing request. Optional: csr, CertificateType.",
+      "method": "GET",
+      "path": "/xml.response/ssl/parse-csr",
+      "params": [
+        {
+          "name": "csr",
+          "type": "string",
+          "location": "query",
+          "description": "Csr"
+        },
+        {
+          "name": "CertificateType",
+          "type": "string",
+          "location": "query",
+          "description": "Certificate type"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_users-address-get-info",
+      "description": "Runs `namecheap.users.address.getInfo`. Optional: AddressId.",
+      "method": "GET",
+      "path": "/xml.response/users/address/get-info",
+      "params": [
+        {
+          "name": "AddressId",
+          "type": "int",
+          "location": "query",
+          "description": "Address id"
+        }
+      ]
+    },
+    {
+      "name": "xml-response_users-address-get-list",
+      "description": "Runs `namecheap.users.address.getList`.",
+      "method": "GET",
+      "path": "/xml.response/users/address/get-list",
+      "params": []
+    },
+    {
+      "name": "xml-response_users-get-balances",
+      "description": "Runs `namecheap.users.getBalances`.",
+      "method": "GET",
+      "path": "/xml.response/users/get-balances",
+      "params": []
+    },
+    {
+      "name": "xml-response_users-get-pricing",
+      "description": "Runs `namecheap.users.getPricing`. Optional: ProductType, ProductCategory, PromotionCode (plus 1 more).",
+      "method": "GET",
+      "path": "/xml.response/users/get-pricing",
+      "params": [
+        {
+          "name": "ProductType",
+          "type": "string",
+          "location": "query",
+          "description": "Product type"
+        },
+        {
+          "name": "ProductCategory",
+          "type": "string",
+          "location": "query",
+          "description": "Product category"
+        },
+        {
+          "name": "PromotionCode",
+          "type": "string",
+          "location": "query",
+          "description": "Promotion code"
+        },
+        {
+          "name": "ActionName",
+          "type": "string",
+          "location": "query",
+          "description": "Action name"
+        }
+      ]
+    }
+  ]
+}

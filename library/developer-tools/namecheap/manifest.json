@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "namecheap-pp-mcp",
   "display_name": "Namecheap",
-  "version": "3.10.0",
-  "description": "Namecheap API surface as MCP tools.",
+  "version": "4.6.0",
+  "description": "Manage Namecheap domains, DNS, account balances, pricing, contacts, TLDs, and SSL metadata from the terminal using Namecheap’s XML API.",
   "author": {
     "name": "CLI Printing Press"
   },
