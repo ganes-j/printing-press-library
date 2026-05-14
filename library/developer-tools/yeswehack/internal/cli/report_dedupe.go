@@ -48,7 +48,11 @@ func newReportDedupeCmd(flags *rootFlags) *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "%.2f\t%s\t%s\n", row["score"], row["program"], row["title"])
 				}
 			}
-			if len(rows) > 0 && rows[0]["score"].(float64) >= 0.8 {
+			if len(rows) > 0 {
+				if score, ok := rows[0]["score"].(float64); ok && score >= 0.8 {
+					return &cliError{code: 2, err: fmt.Errorf("likely duplicate found")}
+				}
+			}
 				return &cliError{code: 2, err: fmt.Errorf("likely duplicate found")}
 			}
 			return nil
