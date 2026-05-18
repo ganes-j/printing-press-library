@@ -559,6 +559,31 @@
       }
     },
     {
+      "name": "dreo",
+      "category": "devices",
+      "api": "Dreo",
+      "description": "The only standalone CLI for Dreo smart-home devices — bulk control, live sensor streams, and a local history every...",
+      "path": "library/devices/dreo",
+      "printer": "tmchow",
+      "printer_name": "Trevin Chow",
+      "mcp": {
+        "binary": "dreo-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 5,
+        "public_tool_count": 0,
+        "auth_type": "bearer_token",
+        "env_vars": [
+          "DREO_USERNAME",
+          "DREO_PASSWORD"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "internal"
+      }
+    },
+    {
       "name": "dub",
       "category": "marketing",
       "api": "Dub",
