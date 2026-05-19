@@ -110,6 +110,29 @@
       }
     },
     {
+      "name": "amazon-orders",
+      "category": "commerce",
+      "api": "Amazon Orders",
+      "description": "Walk your Amazon order history offline — every order, item, shipment, and dollar in a local SQLite store no other...",
+      "path": "library/commerce/amazon-orders",
+      "printer": "bwishan",
+      "printer_name": "Brian Wishan",
+      "mcp": {
+        "binary": "amazon-orders-pp-mcp",
+        "transports": [
+          "stdio"
+        ],
+        "tool_count": 6,
+        "public_tool_count": 0,
+        "auth_type": "cookie",
+        "env_vars": [
+          "AMAZON_COOKIES"
+        ],
+        "mcp_ready": "partial",
+        "spec_format": "internal"
+      }
+    },
+    {
       "name": "amazon-seller",
       "category": "commerce",
       "api": "Amazon Seller",
@@ -1491,6 +1514,28 @@
         ],
         "mcp_ready": "full",
         "spec_format": "openapi3"
+      }
+    },
+    {
+      "name": "nasa-images",
+      "category": "media-and-entertainment",
+      "api": "NASA Image and Video Library",
+      "description": "Every NASA Image and Video Library endpoint, plus a local SQLite mirror, FTS search, resumable bulk download,...",
+      "path": "library/media-and-entertainment/nasa-images",
+      "printer": "tmchow",
+      "printer_name": "Trevin Chow",
+      "mcp": {
+        "binary": "nasa-images-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 5,
+        "public_tool_count": 5,
+        "auth_type": "none",
+        "env_vars": [],
+        "mcp_ready": "full",
+        "spec_format": "internal"
       }
     },
     {
