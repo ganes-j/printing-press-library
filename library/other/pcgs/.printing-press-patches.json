@@ -176,6 +176,15 @@
         "internal/mcp/intents_runner.go"
       ],
       "validated_outcome": "go build ./... && go vet ./..."
+    },
+    {
+      "id": "skill-cookbook-numista-catalogue-enrichment",
+      "summary": "Add a SKILL.md recipe pointing agents at numista-pp-cli for catalogue enrichment when they have a PCGS cert in hand and want Numista's N# / mintage / cross-references / collector context.",
+      "reason": "Reciprocal of the numista-pp-cli 'If your input is a PCGS cert' cookbook entry (PR #684). Agents landing in pcgs cold with a cert result and needing community-maintained catalogue context had no in-skill pointer to Numista as the complementary CLI. The new recipe documents the two-command bridge (PCGS facts-cert -> Numista types search) and the absence of a --catalogue pcgs shortcut, so agents don't burn quota guessing. Pure docs change; no Go source touched.",
+      "files": [
+        "SKILL.md"
+      ],
+      "validated_outcome": "printing-press publish validate (SKILL.md narrative checks) and go build ./... pass."
     }
   ]
 }

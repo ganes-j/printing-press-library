@@ -260,6 +260,28 @@ pcgs-pp-cli coin batch --file examples-pcgs-coin-list.csv --list-certs --json
 
 Recipe R10 — diff coin batch --list-certs's normalized cert list against your downstream collection's cert export to find mismatches, missing certs, or certs that no longer match PCGS truth.
 
+### Pair with numista-pp-cli for catalogue enrichment
+
+Reach for [`numista-pp-cli`](https://github.com/mvanhorn/printing-press-library/tree/main/library/other/numista) when you have a PCGS cert result in hand and want the community-maintained catalogue context PCGS doesn't carry: the Numista N# (type ID), mintage by year/mint, references to traditional catalogues (Krause, Schön, Yeoman), and collector links. PCGS is grading-service-authoritative (cert, grade, population, auction history); Numista is catalogue-authoritative. They're complementary, not redundant.
+
+Two commands, one Numista API call:
+
+```bash
+# 1. Pull type / year / issuer from PCGS (no Numista quota cost).
+pcgs-pp-cli coin facts-cert <cert-number> --json --select Name,Year,CountryName
+# → e.g. {"Name":"1881-S Morgan Dollar","Year":1881,"CountryName":"United States"}
+
+# 2. Text-search Numista with --issuer (slug) + --year for an unambiguous match.
+numista-pp-cli types search --q "morgan dollar" --issuer united-states --year 1878-1921 \
+  --agent --select types.id,types.title
+# → top result is the Numista N# you want (e.g. 1492 for the Morgan Dollar type).
+```
+
+Notes:
+
+- There is no `--catalogue pcgs` shortcut in Numista. PCGS is not one of Numista's reference catalogues (`--catalogue` works for traditional numismatic references like Krause / Schön only), so don't go hunting for a direct cert → N# lookup. The two-command bridge above is the supported workflow for common US types.
+- This CLI does NOT depend on `numista-pp-cli`. No shell-out, no auto-detection — install it separately when you want catalogue enrichment. `numista-pp-cli` has the matching `### If your input is a PCGS cert` section in its SKILL.md so an agent landing in either CLI gets directed to the other when the workflow calls for it.
+
 ## Auth Setup
 
 Set `PCGS_AUTH_TOKEN` to the bearer token generated at https://www.pcgs.com/publicapi. Run `pcgs-pp-cli doctor` to confirm reachability. All commands authenticate identically — there is one auth mode.
