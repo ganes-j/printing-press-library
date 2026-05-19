@@ -1,6 +1,6 @@
 {
-  "dir": "/Users/cathrynlavery/Developer/mvanhorn/printing-press-library/library/theclose",
-  "spec_path": "/Users/cathrynlavery/Developer/mvanhorn/printing-press-library/library/theclose/spec.json",
+  "dir": "\u003ccli-dir\u003e/theclose",
+  "spec_path": "\u003ccli-dir\u003e/spec.json",
   "verdict": "PASS",
   "path_check": {
     "tested": 7,

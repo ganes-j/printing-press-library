@@ -1,9 +1,7 @@
 {
   "schema_version": 1,
   "generated_at": "2026-05-14T15:38:07.150394Z",
-  "printing_press_version": "4.6.1",
-  "printing_press_commit_sha": "37a70ff0f34a377e66b857c3db44d66db30f0326",
-  "printing_press_library_commit_sha": "fb477915cf79c2e3de4f7089d8ef05634eb326b8",
+  "printing_press_version": "4.9.0",
   "printing_press_library_subtree_sha": "adcd6a9f94e426041d7f33ebaa71d700f8d3a91a",
   "api_name": "theclose",
   "display_name": "Close Developer",
@@ -19,5 +17,7 @@
   "auth_type": "bearer_token",
   "auth_env_vars": [
     "CLOSE_DEVELOPER_BEARER_AUTH"
-  ]
+  ],
+  "printing_press_commit_sha": "b6f1fae8d028e20347382157d46f6dee0e768778",
+  "printing_press_library_commit_sha": "fb477915cf79c2e3de4f7089d8ef05634eb326b8"
 }
