@@ -84,3 +84,43 @@ func TestDeriveContactsTagsFromPage_UsesPrintableEscapedCompositeID(t *testing.T
 		t.Fatalf("tag = %q, want original tag", tag)
 	}
 }
+
+func TestAnnotateLocationsTagsItems_AddsLocationIDForTypedUpsert(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer db.Close()
+
+	items := []json.RawMessage{
+		json.RawMessage(`{"id":"tag-1","name":"Hot"}`),
+		json.RawMessage(`{"id":"tag-2","name":"Cold"}`),
+	}
+	annotated := annotateLocationsTagsItems(items, "location-1")
+	stored, extractFailures, err := upsertResourceBatch(db, "locations_tags", annotated)
+	if err != nil {
+		t.Fatalf("upsertResourceBatch: %v", err)
+	}
+	if stored != len(items) {
+		t.Fatalf("stored = %d, want %d", stored, len(items))
+	}
+	if extractFailures != 0 {
+		t.Fatalf("extractFailures = %d, want 0", extractFailures)
+	}
+
+	var typed int
+	if err := db.DB().QueryRow(`SELECT COUNT(*) FROM "locations_tags" WHERE "locations_id" = ?`, "location-1").Scan(&typed); err != nil {
+		t.Fatalf("count locations_tags: %v", err)
+	}
+	if typed != len(items) {
+		t.Fatalf("locations_tags rows for location = %d, want %d", typed, len(items))
+	}
+
+	var generic string
+	if err := db.DB().QueryRow(`SELECT data FROM resources WHERE resource_type = ? AND id = ?`, "locations_tags", "tag-1").Scan(&generic); err != nil {
+		t.Fatalf("query generic resource: %v", err)
+	}
+	if !strings.Contains(generic, `"locations_id":"location-1"`) {
+		t.Fatalf("generic resource data %q missing injected locations_id", generic)
+	}
+}

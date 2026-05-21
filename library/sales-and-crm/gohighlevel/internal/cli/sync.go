@@ -351,7 +351,8 @@ func syncResource(c syncFetcher, db *store.Store, resource, sinceTS string, full
 	// env) BEFORE the unresolved-key check below. Without this, locations_tags
 	// (path /locations/{locationId}/tags) would be silently skipped with a
 	// sync_warning even when the user supplied the location.
-	if locID := resolveSyncLocationID(userParams); locID != "" {
+	locID := resolveSyncLocationID(userParams)
+	if locID != "" {
 		path = strings.ReplaceAll(path, "{locationId}", locID)
 	}
 
@@ -502,6 +503,9 @@ func syncResource(c syncFetcher, db *store.Store, resource, sinceTS string, full
 		// Try to extract items from the response.
 		// Strategy: try array first, then common wrapper keys.
 		items, nextCursor, hasMore := extractPageItems(data, pageSize.cursorParam)
+		if resource == "locations_tags" && locID != "" {
+			items = annotateLocationsTagsItems(items, locID)
+		}
 
 		// PATCH(amend-2026-05-20: contacts + tags sync) — GHL contacts
 		// search uses searchAfter cursors (array of values, not a string).
@@ -1011,6 +1015,33 @@ func upsertResourceBatch(db *store.Store, resource string, items []json.RawMessa
 		extractFailures += targetExtractFailures
 	}
 	return stored, extractFailures, nil
+}
+
+func annotateLocationsTagsItems(items []json.RawMessage, locationID string) []json.RawMessage {
+	if locationID == "" {
+		return items
+	}
+
+	annotated := make([]json.RawMessage, 0, len(items))
+	for _, item := range items {
+		var obj map[string]any
+		if err := json.Unmarshal(item, &obj); err != nil {
+			annotated = append(annotated, item)
+			continue
+		}
+		if existing, ok := obj["locations_id"].(string); ok && existing != "" {
+			annotated = append(annotated, item)
+			continue
+		}
+		obj["locations_id"] = locationID
+		next, err := json.Marshal(obj)
+		if err != nil {
+			annotated = append(annotated, item)
+			continue
+		}
+		annotated = append(annotated, next)
+	}
+	return annotated
 }
 
 func resolveDiscriminatedResource(resource string, obj map[string]any) string {
