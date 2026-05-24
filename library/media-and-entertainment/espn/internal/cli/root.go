@@ -41,6 +41,9 @@ type rootFlags struct {
 	deliverSpec  string
 	deliverBuf   *bytes.Buffer
 	deliverSink  DeliverSink
+	// noLearn suppresses self-learning loop seed/extract/recall side
+	// effects when true. Set by the persistent --no-learn flag.
+	noLearn bool
 }
 
 // Execute runs the CLI in non-interactive mode: never prompts, all values via flags or stdin.
@@ -76,6 +79,7 @@ func Execute() error {
 
 	rootCmd.PersistentFlags().StringVar(&flags.profileName, "profile", "", "Apply values from a saved profile")
 	rootCmd.PersistentFlags().StringVar(&flags.deliverSpec, "deliver", "", "Route output to a sink: stdout (default), file:<path>, webhook:<url>")
+	rootCmd.PersistentFlags().BoolVar(&flags.noLearn, "no-learn", false, "Disable the teach/recall learning loop for this invocation")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if flags.deliverSpec != "" {
@@ -165,6 +169,12 @@ func Execute() error {
 
 	rootCmd.AddCommand(newProfileCmd(&flags))
 	rootCmd.AddCommand(newFeedbackCmd(&flags))
+	learnCfg := newLearnConfig()
+	rootCmd.AddCommand(newTeachCmd(&flags, learnCfg))
+	rootCmd.AddCommand(newRecallCmd(&flags, learnCfg))
+	rootCmd.AddCommand(newLearningsCmd(&flags, learnCfg))
+	rootCmd.AddCommand(newTeachPatternCmd(&flags))
+	rootCmd.AddCommand(newTeachLookupCmd(&flags))
 
 	err := rootCmd.Execute()
 	if err != nil && strings.Contains(err.Error(), "unknown flag") {
@@ -245,4 +255,34 @@ func newVersionCliCmd() *cobra.Command {
 			fmt.Printf("espn-pp-cli %s\n", version)
 		},
 	}
+}
+
+// learnHookSkipList enumerates framework command names that any
+// future PersistentPreRunE recall hook must NOT trigger on. Today the
+// teach/recall path is invoked explicitly by the agent, so there is
+// no consumer of this list at runtime; the skip-list ships in v1 as
+// forward-looking framework so a later auto-recall hook can consult
+// it without re-deriving the set in every PR.
+//
+// Names match the cobra Use: field. Aliases are matched as-is.
+var learnHookSkipList = map[string]struct{}{
+	"auth":          {},
+	"doctor":        {},
+	"help":          {},
+	"sync":          {},
+	"profile":       {},
+	"feedback":      {},
+	"which":         {},
+	"agent-context": {},
+	"completion":    {},
+	"version":       {},
+}
+
+// shouldSkipLearnHook reports whether a recall pre-run hook should
+// short-circuit for cmdName. Used today only by unit tests asserting
+// the contents of learnHookSkipList; reserved for a future
+// PersistentPreRunE auto-recall integration.
+func shouldSkipLearnHook(cmdName string) bool {
+	_, skip := learnHookSkipList[cmdName]
+	return skip
 }

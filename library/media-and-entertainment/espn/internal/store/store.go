@@ -16,6 +16,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// StoreSchemaVersion is the on-disk schema version this binary understands.
+const StoreSchemaVersion = 3
+
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // IsUUID returns true if the input looks like a UUID.
@@ -221,6 +224,43 @@ func (s *Store) migrate() error {
 			id TEXT PRIMARY KEY,
 			data JSON NOT NULL,
 			synced_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// CLI Printing Press: learn migrations
+		`CREATE TABLE IF NOT EXISTS search_learnings (
+			query_pattern TEXT NOT NULL,
+			query_entities TEXT NOT NULL DEFAULT '[]',
+			resource_ids TEXT NOT NULL DEFAULT '[]',
+			resource_type TEXT NOT NULL,
+			venue TEXT,
+			action TEXT,
+			confidence INTEGER NOT NULL DEFAULT 0,
+			source TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (query_pattern, resource_type)
+		)`,
+		`CREATE TABLE IF NOT EXISTS search_patterns (
+			template TEXT NOT NULL,
+			entity_kind TEXT NOT NULL,
+			confidence INTEGER NOT NULL DEFAULT 0,
+			source TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (template, entity_kind)
+		)`,
+		`CREATE TABLE IF NOT EXISTS entity_lookups (
+			canonical TEXT NOT NULL,
+			alias TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			source TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE (canonical, alias, kind)
+		)`,
+		`CREATE TABLE IF NOT EXISTS teach_log_metadata (
+			rotation_at DATETIME,
+			last_size_bytes INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS search_learnings_fts USING fts5(
+			query_pattern, tokenize='porter unicode61'
 		)`,
 	}
 
@@ -1065,4 +1105,12 @@ func hashString(s string) uint32 {
 		h = 1
 	}
 	return h
+}
+
+// DB exposes the underlying *sql.DB for callers that need to run
+// ad-hoc queries. Inserted by the sweep-learn-install retrofit;
+// the canonical generator template defines an equivalent.
+// Callers must not call Close on the returned handle.
+func (s *Store) DB() *sql.DB {
+	return s.db
 }

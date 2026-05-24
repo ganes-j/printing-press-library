@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generated_at": "2026-04-09T19:41:36.371347Z",
-  "printing_press_version": "1.2.1-0.20260409145412-b1128d0e07fd+dirty",
+  "printing_press_version": "4.14.0+learn-loop",
   "api_name": "espn",
   "cli_name": "espn-pp-cli",
   "printer": "mvanhorn",
