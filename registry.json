@@ -6523,6 +6523,59 @@
       }
     },
     {
+      "name": "sncf-connect",
+      "category": "travel",
+      "api": "Navitia",
+      "description": "navitia.io is the open API for building cool stuff with mobility data.",
+      "search_terms": [
+        "sncf-connect",
+        "Navitia",
+        "sncf-connect-pp-cli",
+        "navitia.io is the open API for building cool stuff with mobility data.",
+        "Commute tracker",
+        "commute check",
+        "Save your commute route and check it each morning — next trains plus disruption status in one call, exits non-zero on disruption for cron scripting.",
+        "Disruption digest",
+        "disruptions digest",
+        "Morning brief of all disruptions across your saved lines, ranked by severity: blocked first, then delayed, then informational.",
+        "Isochrone station list",
+        "isochrone stations",
+        "Given a starting point and travel duration, list all train stations reachable within that time.",
+        "Accessibility report",
+        "journey accessibility",
+        "For a planned journey, show elevator and escalator status at each transfer station so you know before you travel.",
+        "Timetable frequency heatmap",
+        "timetable heatmap",
+        "See how many trains run each hour on a line at a stop — ASCII bar chart showing peak and off-peak density.",
+        "Board export",
+        "Export a full departure board as flat CSV or JSONL for pipeline ingestion — all fields, no formatting.",
+        "Vehicle journey trace",
+        "vehicle trace",
+        "Get the full ordered stop sequence for a specific train service — train's perspective, not traveler's.",
+        "Stop cluster",
+        "stops cluster",
+        "Group nearby stops within a radius using Haversine distance — useful for deduplicating station indexes and resolving ambiguous names."
+      ],
+      "path": "library/travel/sncf-connect",
+      "printer": "jmbernabotto",
+      "printer_name": "jmbernabotto",
+      "mcp": {
+        "binary": "sncf-connect-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 269,
+        "public_tool_count": 0,
+        "auth_type": "api_key",
+        "env_vars": [
+          "SNCF_API_KEY"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "openapi3"
+      }
+    },
+    {
       "name": "spotify",
       "category": "media-and-entertainment",
       "api": "Spotify Web",
