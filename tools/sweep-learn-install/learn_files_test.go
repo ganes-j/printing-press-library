@@ -1,6 +1,8 @@
 package main
 
 import (
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -104,6 +106,150 @@ func TestRenderLearnPackage_ByteForByteParity(t *testing.T) {
 	}
 }
 
+// TestEmitsTeachGo_ByteForByteParity asserts the sweep's emission of
+// internal/cli/teach.go matches the cli-printing-press generator's
+// own emission byte-for-byte. teach.go is the cobra surface that
+// wires newTeachCmd / newRecallCmd / newLearningsCmd / newTeachPatternCmd
+// / newTeachLookupCmd into root.go; the file does not depend on any
+// spec.Learn shape (no TickerPatterns / Stopwords / EntityLookupSeeds
+// gates), so the golden's learn-loop-example output and the sweep's
+// stub emission are textually equivalent. Year is normalized as
+// elsewhere.
+func TestEmitsTeachGo_ByteForByteParity(t *testing.T) {
+	goldenRoot := findGoldenLearnFixture(t)
+	if goldenRoot == "" {
+		t.Skip("cli-printing-press golden fixture not found; parity test is developer-only")
+	}
+
+	ctx := sweepCtx{
+		CLIDir:     "/tmp/parity-target",
+		CLIName:    "learn-loop-example-pp-cli",
+		APIName:    "learn-loop-example",
+		Category:   "other",
+		OwnerName:  "printing-press-golden",
+		ModulePath: "learn-loop-example-pp-cli",
+	}
+	emitted, err := renderLearnPackage(ctx)
+	if err != nil {
+		t.Fatalf("renderLearnPackage: %v", err)
+	}
+
+	goldenPath := filepath.Join(goldenRoot, "internal", "cli", "teach.go")
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Skipf("teach.go golden not present: %v", err)
+	}
+	got, ok := emitted["internal/cli/teach.go"]
+	if !ok {
+		t.Fatal("sweep did not emit internal/cli/teach.go")
+	}
+	wantNormalized := stripCopyrightYear(string(want))
+	gotNormalized := stripCopyrightYear(string(got))
+	if wantNormalized != gotNormalized {
+		t.Errorf("byte-for-byte parity mismatch for internal/cli/teach.go\n--- want ---\n%s\n--- got ---\n%s",
+			wantNormalized, gotNormalized)
+	}
+}
+
+// TestEmitsLearnInitGo_StubDefaults asserts the sweep's emission of
+// internal/cli/learn_init.go matches the canonical "empty Learn block"
+// shape: a no-op newLearnConfig (returns entities.NewConfig() with no
+// RegisterTickerPattern / RegisterStopwords calls) and a no-op
+// initLearn (returns nil, never touches the DB). The cli-printing-press
+// golden fixture for learn-loop-example has populated seeds, so the
+// parity target here is an embedded expected string rather than a
+// golden file — documented in the embed comment below.
+func TestEmitsLearnInitGo_StubDefaults(t *testing.T) {
+	ctx := sweepCtx{
+		CLIDir:     "/tmp/stub-target",
+		CLIName:    "demo-pp-cli",
+		APIName:    "demo",
+		Category:   "other",
+		OwnerName:  "Tester",
+		ModulePath: "github.com/example/demo-pp-cli",
+	}
+	emitted, err := renderLearnPackage(ctx)
+	if err != nil {
+		t.Fatalf("renderLearnPackage: %v", err)
+	}
+	got, ok := emitted["internal/cli/learn_init.go"]
+	if !ok {
+		t.Fatal("sweep did not emit internal/cli/learn_init.go")
+	}
+
+	// Structural assertions: the stub shape avoids the imports and
+	// call sites that only render under a populated Learn block.
+	gotStr := string(got)
+	mustContain := []string{
+		"package cli",
+		"func newLearnConfig() *entities.Config {",
+		"cfg := entities.NewConfig()",
+		"return cfg",
+		"func initLearn(ctx context.Context, db *sql.DB) error {",
+		"_ = ctx",
+		"_ = db",
+		"return nil",
+		"var learnInitOnce sync.Once",
+		"func runLearnInitOnce(ctx context.Context) {",
+		"github.com/example/demo-pp-cli/internal/learn/entities",
+		"github.com/example/demo-pp-cli/internal/store",
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(gotStr, want) {
+			t.Errorf("stub learn_init.go missing %q\nrendered:\n%s", want, gotStr)
+		}
+	}
+
+	mustNotContain := []string{
+		// regexp import + RegisterTickerPattern only render when
+		// Learn.TickerPatterns is non-empty.
+		`"regexp"`,
+		"RegisterTickerPattern",
+		// RegisterStopwords only renders when Learn.Stopwords is
+		// non-empty.
+		"RegisterStopwords",
+		// lookups import + SeedFromConfig only render when
+		// Learn.EntityLookupSeeds is non-empty.
+		"learn/lookups",
+		"SeedFromConfig",
+	}
+	for _, unwanted := range mustNotContain {
+		if strings.Contains(gotStr, unwanted) {
+			t.Errorf("stub learn_init.go unexpectedly contains %q (likely a Learn-shape gate fired):\nrendered:\n%s", unwanted, gotStr)
+		}
+	}
+}
+
+// TestStubLearnInitGoIsBenignNoOp asserts the stub learn_init.go
+// parses as syntactically valid Go. The "benign no-op" claim in the
+// task statement turns on the package compiling against the rest of
+// the printed CLI; this test guards the upstream parse step (the
+// sweep produces something gofmt+parser will accept) without
+// requiring a full module compile in the test harness.
+func TestStubLearnInitGoIsBenignNoOp(t *testing.T) {
+	ctx := sweepCtx{
+		CLIDir:     "/tmp/stub-target",
+		CLIName:    "demo-pp-cli",
+		APIName:    "demo",
+		Category:   "other",
+		OwnerName:  "Tester",
+		ModulePath: "github.com/example/demo-pp-cli",
+	}
+	emitted, err := renderLearnPackage(ctx)
+	if err != nil {
+		t.Fatalf("renderLearnPackage: %v", err)
+	}
+	src, ok := emitted["internal/cli/learn_init.go"]
+	if !ok {
+		t.Fatal("sweep did not emit internal/cli/learn_init.go")
+	}
+
+	fset := token.NewFileSet()
+	if _, err := parser.ParseFile(fset, "learn_init.go", src, parser.ParseComments); err != nil {
+		t.Fatalf("stub learn_init.go does not parse: %v\n--- source ---\n%s", err, src)
+	}
+}
+
 // stripCopyrightYear normalizes the year token in the
 // `// Copyright YYYY ...` header line so a year tick doesn't break
 // parity. Only the YYYY digit run gets replaced; the rest of the
@@ -139,9 +285,10 @@ func findGoldenLearnFixture(t *testing.T) string {
 }
 
 // TestRenderLearnPackage_AllFilesPresent verifies the sweep emits the
-// complete file set (currently 27 templates). A new template added to
-// the generator but missed in the sweep would surface as a smaller
-// emission count.
+// complete file set the generator emits for a learn-enabled spec:
+// the internal/learn data package plus the internal/cli teach.go +
+// learn_init.go cobra surface. A new template added to the generator
+// but missed in the sweep would surface as a smaller emission count.
 func TestRenderLearnPackage_AllFilesPresent(t *testing.T) {
 	ctx := sweepCtx{
 		CLIName:    "test-pp-cli",
@@ -170,6 +317,9 @@ func TestRenderLearnPackage_AllFilesPresent(t *testing.T) {
 		"internal/learn/patterns/store.go",
 		"internal/learn/patterns/extract.go",
 		"internal/learn/patterns/apply.go",
+		// Cobra-surface files emitted alongside the learn data package.
+		"internal/cli/teach.go",
+		"internal/cli/learn_init.go",
 	}
 	for _, f := range expectedFiles {
 		if _, ok := emitted[f]; !ok {

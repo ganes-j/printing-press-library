@@ -5,18 +5,26 @@
 // error so the sweep does not silently no-op or produce a broken
 // patch.
 //
-// Three pieces are injected:
+// Four pieces are injected:
 //
-//  1. A persistent `--no-learn` boolean flag on the root command,
-//     stored as rootFlags.NoLearn.
-//  2. teach / recall / learnings AddCommand registrations, gated
-//     behind `if !flags.NoLearn`. The registrations sit alongside
-//     the other AddCommand sites and reuse the same flags struct.
-//  3. A learnHookSkipList map declaring command names that must
-//     bypass the PersistentPreRunE learn-init hook. The list is
-//     consulted by the spec-driven internal/cli/learn_init.go
-//     emitted alongside this file (out of scope for this sweep —
-//     the per-CLI Learn config drives that emission).
+//  1. A persistent `noLearn` bool field on the rootFlags struct.
+//     Matches the canonical generator template's field name (lowercase
+//     n) so the emitted internal/cli/teach.go can reference
+//     `flags.noLearn` without a separate field-name patch.
+//  2. The cobra BoolVar binding for `--no-learn` on the persistent
+//     flag set.
+//  3. The five teach/recall/learnings/teach-pattern/teach-lookup
+//     AddCommand registrations alongside a `learnCfg := newLearnConfig()`
+//     declaration. teach.go's command constructors take both
+//     `*rootFlags` and `*entities.Config` per the canonical generator
+//     emission; the declaration sits adjacent to the AddCommand calls
+//     so the variable's scope is the local one Execute's `var flags`
+//     creates.
+//  4. The `learnHookSkipList` map + `shouldSkipLearnHook` helper.
+//     The skip list names framework commands that must bypass the
+//     PersistentPreRunE learn-init hook (auth, doctor, version, help,
+//     etc.); the helper is the one site consumers (today: tests; in
+//     future the generator-emitted PreRunE) consult it from.
 //
 // Idempotency: a second run with the same input produces zero diff.
 // Each injection probes for its own canonical marker before adding
@@ -91,10 +99,10 @@ func detectRootShape(src []byte) (rootShape, error) {
 	return rootShapeUnknown, fmt.Errorf("root.go shape unrecognized (no rootFlags type, no var rootCmd)")
 }
 
-// patchRootAST applies the three injections (flag, AddCommand calls,
-// skip-list) to a canonical-shape root.go. Returns the new source
-// (still go-fmt-clean because edits operate on whole lines or self-
-// contained blocks) plus a changed boolean.
+// patchRootAST applies the four injections (flag field, BoolVar binding,
+// learnCfg + AddCommands, skip-list) to a canonical-shape root.go.
+// Returns the new source (still go-fmt-clean because edits operate on
+// whole lines or self-contained blocks) plus a changed boolean.
 func patchRootAST(src string, ctx sweepCtx) (string, bool, error) {
 	out := src
 	changed := false
@@ -128,13 +136,16 @@ func patchRootAST(src string, ctx sweepCtx) (string, bool, error) {
 	return out, changed, nil
 }
 
-// injectNoLearnFlagField adds a NoLearn bool to the rootFlags struct.
-// Idempotent: skipped when the field is already present.
+// injectNoLearnFlagField adds a noLearn bool to the rootFlags struct.
+// Lowercase name to match the generator template's emission so the
+// teach.go template (which references flags.noLearn) compiles without
+// a second rewrite. Idempotent: skipped when the field is already
+// present.
 func injectNoLearnFlagField(src string) (string, bool) {
-	if strings.Contains(src, "NoLearn bool") {
+	if strings.Contains(src, "noLearn bool") {
 		return src, false
 	}
-	// Find the rootFlags struct opening brace and inject a NoLearn
+	// Find the rootFlags struct opening brace and inject a noLearn
 	// field right before the closing brace. Conservative: matches
 	// the literal `type rootFlags struct {` header so we don't
 	// accidentally patch a similarly-named local.
@@ -169,16 +180,16 @@ func injectNoLearnFlagField(src string) (string, bool) {
 	for lineStart > 0 && src[lineStart-1] != '\n' {
 		lineStart--
 	}
-	insertion := "\t// NoLearn suppresses self-learning loop seed/extract/recall side\n" +
+	insertion := "\t// noLearn suppresses self-learning loop seed/extract/recall side\n" +
 		"\t// effects when true. Set by the persistent --no-learn flag.\n" +
-		"\tNoLearn bool\n"
+		"\tnoLearn bool\n"
 	return src[:lineStart] + insertion + src[lineStart:], true
 }
 
 // injectNoLearnPersistentFlag adds the cobra BoolVar binding for
 // --no-learn. Idempotent: skipped when the binding is already present.
 func injectNoLearnPersistentFlag(src string) (string, bool) {
-	if strings.Contains(src, `BoolVar(&flags.NoLearn, "no-learn"`) {
+	if strings.Contains(src, `BoolVar(&flags.noLearn, "no-learn"`) {
 		return src, false
 	}
 	// Find the last line in Execute() that calls rootCmd.PersistentFlags()
@@ -190,7 +201,7 @@ func injectNoLearnPersistentFlag(src string) (string, bool) {
 	if lineEnd < 0 {
 		return src, false
 	}
-	insertion := "\trootCmd.PersistentFlags().BoolVar(&flags.NoLearn, \"no-learn\", false, \"Disable self-learning loop side effects (recall, teach, preseed)\")\n"
+	insertion := "\trootCmd.PersistentFlags().BoolVar(&flags.noLearn, \"no-learn\", false, \"Disable the teach/recall learning loop for this invocation\")\n"
 	return src[:lineEnd] + insertion + src[lineEnd:], true
 }
 
@@ -210,14 +221,17 @@ func lastLineEndContaining(src, needle string) int {
 	return idx + lineEnd + 1
 }
 
-// injectLearnAddCommands wires the teach/recall/learnings cobra
-// commands into root.go. The teach package emits newTeachCmd /
-// newRecallCmd / newLearningsCmd constructors in internal/cli/teach.go;
-// this injection is the one site root.go calls them from.
+// injectLearnAddCommands wires the five teach/recall/learnings/
+// teach-pattern/teach-lookup cobra commands into root.go. The sweep
+// emits newTeachCmd / newRecallCmd / newLearningsCmd / newTeachPatternCmd
+// / newTeachLookupCmd constructors in internal/cli/teach.go (Gap 2's
+// new emission). newLearnConfig is emitted in internal/cli/learn_init.go
+// alongside; this injection declares the local learnCfg variable
+// teach/recall/learnings consume.
 //
 // Idempotent: skipped when newTeachCmd is already referenced.
 func injectLearnAddCommands(src string, ctx sweepCtx) (string, bool) {
-	if strings.Contains(src, "newTeachCmd(&flags)") {
+	if strings.Contains(src, "newTeachCmd(") {
 		return src, false
 	}
 	// Anchor on the last line that calls rootCmd.AddCommand. Same
@@ -227,17 +241,26 @@ func injectLearnAddCommands(src string, ctx sweepCtx) (string, bool) {
 	if lineEnd < 0 {
 		return src, false
 	}
-	insertion := "\trootCmd.AddCommand(newTeachCmd(&flags))\n" +
-		"\trootCmd.AddCommand(newRecallCmd(&flags))\n" +
-		"\trootCmd.AddCommand(newLearningsCmd(&flags))\n"
+	// learnCfg is built once and passed by pointer to each of teach,
+	// recall, and learnings so they share configuration. The two
+	// manual-install commands (teach-pattern, teach-lookup) take only
+	// flags per the generator template.
+	insertion := "\tlearnCfg := newLearnConfig()\n" +
+		"\trootCmd.AddCommand(newTeachCmd(&flags, learnCfg))\n" +
+		"\trootCmd.AddCommand(newRecallCmd(&flags, learnCfg))\n" +
+		"\trootCmd.AddCommand(newLearningsCmd(&flags, learnCfg))\n" +
+		"\trootCmd.AddCommand(newTeachPatternCmd(&flags))\n" +
+		"\trootCmd.AddCommand(newTeachLookupCmd(&flags))\n"
 	return src[:lineEnd] + insertion + src[lineEnd:], true
 }
 
-// injectLearnHookSkipList adds the learnHookSkipList map. The list
-// names commands that must bypass the PersistentPreRunE learn-init
-// hook (auth, doctor, version, help — commands that ship without a
-// store). Defined at file scope so the per-CLI learn_init.go emitted
-// alongside can consult it via PersistentPreRunE.
+// injectLearnHookSkipList adds the learnHookSkipList map and the
+// shouldSkipLearnHook helper. The list names framework commands
+// that must bypass any PersistentPreRunE learn-init hook (auth,
+// doctor, version, help — commands that ship without a store). The
+// helper is the one site consumers consult the list from. Mirrors
+// the canonical generator template emission so the package keeps
+// parity with fresh prints.
 //
 // Idempotent: skipped when learnHookSkipList already exists.
 func injectLearnHookSkipList(src string) (string, bool) {
@@ -247,16 +270,34 @@ func injectLearnHookSkipList(src string) (string, bool) {
 	// Append at file end so we don't disturb any existing top-level
 	// declarations. The block carries its own doc comment so a
 	// downstream reader knows what it's for without grepping.
-	insertion := "\n// learnHookSkipList declares commands that must bypass the\n" +
-		"// PersistentPreRunE learn-init hook. These commands ship without a\n" +
-		"// store and run before initLearn would be safe to call. Keep in sync\n" +
-		"// with the generator's learn_init.go template.\n" +
+	insertion := "\n// learnHookSkipList enumerates framework command names that any\n" +
+		"// future PersistentPreRunE recall hook must NOT trigger on. Today the\n" +
+		"// teach/recall path is invoked explicitly by the agent, so there is\n" +
+		"// no consumer of this list at runtime; the skip-list ships in v1 as\n" +
+		"// forward-looking framework so a later auto-recall hook can consult\n" +
+		"// it without re-deriving the set in every PR.\n" +
+		"//\n" +
+		"// Names match the cobra Use: field. Aliases are matched as-is.\n" +
 		"var learnHookSkipList = map[string]struct{}{\n" +
-		"\t\"auth\":       {},\n" +
-		"\t\"completion\": {},\n" +
-		"\t\"doctor\":     {},\n" +
-		"\t\"help\":       {},\n" +
-		"\t\"version\":    {},\n" +
+		"\t\"auth\":          {},\n" +
+		"\t\"doctor\":        {},\n" +
+		"\t\"help\":          {},\n" +
+		"\t\"sync\":          {},\n" +
+		"\t\"profile\":       {},\n" +
+		"\t\"feedback\":      {},\n" +
+		"\t\"which\":         {},\n" +
+		"\t\"agent-context\": {},\n" +
+		"\t\"completion\":    {},\n" +
+		"\t\"version\":       {},\n" +
+		"}\n" +
+		"\n" +
+		"// shouldSkipLearnHook reports whether a recall pre-run hook should\n" +
+		"// short-circuit for cmdName. Used today only by unit tests asserting\n" +
+		"// the contents of learnHookSkipList; reserved for a future\n" +
+		"// PersistentPreRunE auto-recall integration.\n" +
+		"func shouldSkipLearnHook(cmdName string) bool {\n" +
+		"\t_, skip := learnHookSkipList[cmdName]\n" +
+		"\treturn skip\n" +
 		"}\n"
 	out := src
 	if !strings.HasSuffix(out, "\n") {

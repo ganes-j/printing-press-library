@@ -86,12 +86,16 @@ func TestPatchRootAST_InjectsAllPieces(t *testing.T) {
 		t.Fatal("expected changed=true on first run")
 	}
 	expectations := []string{
-		"NoLearn bool",
-		`BoolVar(&flags.NoLearn, "no-learn"`,
-		"rootCmd.AddCommand(newTeachCmd(&flags))",
-		"rootCmd.AddCommand(newRecallCmd(&flags))",
-		"rootCmd.AddCommand(newLearningsCmd(&flags))",
+		"noLearn bool",
+		`BoolVar(&flags.noLearn, "no-learn"`,
+		"learnCfg := newLearnConfig()",
+		"rootCmd.AddCommand(newTeachCmd(&flags, learnCfg))",
+		"rootCmd.AddCommand(newRecallCmd(&flags, learnCfg))",
+		"rootCmd.AddCommand(newLearningsCmd(&flags, learnCfg))",
+		"rootCmd.AddCommand(newTeachPatternCmd(&flags))",
+		"rootCmd.AddCommand(newTeachLookupCmd(&flags))",
 		"learnHookSkipList",
+		"func shouldSkipLearnHook(",
 	}
 	for _, want := range expectations {
 		if !strings.Contains(got, want) {

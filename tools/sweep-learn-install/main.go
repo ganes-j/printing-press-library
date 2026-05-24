@@ -267,13 +267,12 @@ func sweepCLI(cliDir string, opts sweepOpts) (sweepStatus, error) {
 	if err != nil {
 		return statusSkipped, fmt.Errorf("read store.go: %w", err)
 	}
-	if !hasLearnMigrationAnchor(storeData) {
-		// The anchor marker is the contract surface store_migration
-		// can hang off without risking a mangle on hand-edited or
-		// pre-anchor store.go files. Refuse rather than no-op so the
-		// summary reports it.
-		return statusSkipped, fmt.Errorf("store.go missing learn-migrations anchor: bootstrap required (manual review)")
-	}
+	// Anchor presence is no longer a hard skip: patchStoreMigrations
+	// falls through to bootstrap mode when the marker is missing,
+	// seeding both the anchor and the learn-migrations block in one
+	// atomic operation. Bootstrap itself refuses on store.go shapes it
+	// can't safely splice (no migrations slice, multiple migrations
+	// slices), and that refusal surfaces via the plan error below.
 
 	planned, err := planSweep(ctx, rootData, storeData)
 	if err != nil {

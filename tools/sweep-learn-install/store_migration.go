@@ -1,25 +1,33 @@
 // store_migration.go retrofits the learn-loop migrations into a CLI's
-// internal/store/store.go. The contract is anchor-based:
+// internal/store/store.go. Two paths are supported:
 //
-//   - The generator's store.go template (post-U6) carries the literal
-//     `// CLI Printing Press: learn migrations` marker right before
-//     the learn-loop CREATE TABLE statements.
-//   - The sweep finds that marker, replaces the canonical migrations
-//     block (marker + 5 statements), and bumps StoreSchemaVersion
-//     to the learn-enabled value.
-//   - If the marker is missing, the sweep refuses to patch store.go.
-//     A pre-anchor or hand-modified store.go is outside this tool's
-//     contract; the manual-review skip path catches it (see main.go's
-//     sweepCLI).
+//   - **Anchor mode.** Post-U6 generator output carries the literal
+//     `// CLI Printing Press: learn migrations` marker right before the
+//     learn-loop CREATE statements. The sweep finds the marker, replaces
+//     the canonical migrations block (marker + 5 statements), and bumps
+//     StoreSchemaVersion to the learn-enabled value.
+//   - **Bootstrap mode.** Pre-U6 generator output (and every CLI
+//     currently shipping in the published library) carries the
+//     `migrations := []string{...}` slice but no anchor. The sweep
+//     locates the slice via AST, picks an insertion point at the end of
+//     the slice literal, and inserts the anchor + 5 CREATE statements +
+//     a StoreSchemaVersion declaration so future re-sweeps land in the
+//     anchor path. Refuses when the AST search finds multiple `migrations`
+//     slices or no slice at all — those shapes are outside the contract
+//     and surface as "manual review needed" skips.
 //
-// Idempotency: a second run with the same input produces zero diff.
-// The marker locates the block; the block contents are re-emitted
-// verbatim from the canonical source below.
+// Idempotency: a second run on bootstrap-emitted output finds the anchor
+// (because bootstrap wrote it) and runs the anchor path with zero diff.
+// A second anchor-path run also produces zero diff: the block is
+// re-emitted verbatim from the canonical source below.
 
 package main
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"regexp"
 	"strings"
 )
@@ -30,8 +38,8 @@ const (
 )
 
 // hasLearnMigrationAnchor reports whether store.go already carries the
-// canonical learn-migrations marker. Used by sweepCLI to decide
-// whether the CLI is in scope.
+// canonical learn-migrations marker. Used by sweepCLI to decide whether
+// the anchor path or the bootstrap path runs for a given CLI.
 func hasLearnMigrationAnchor(src []byte) bool {
 	return strings.Contains(string(src), learnMigrationAnchor)
 }
@@ -86,13 +94,17 @@ const canonicalLearnMigrationsBlock = `		// CLI Printing Press: learn migrations
 const learnMigrationsBlockEndMarker = "`CREATE VIRTUAL TABLE IF NOT EXISTS search_learnings_fts USING fts5("
 
 // patchStoreMigrations rewrites the learn-migrations block in store.go
-// to its canonical content and bumps StoreSchemaVersion. Returns the
-// new source, a changed boolean, and any error encountered while
-// locating the block boundaries.
+// to its canonical content and bumps StoreSchemaVersion. When the
+// anchor is missing it routes through bootstrapLearnMigrations, which
+// locates the migrations slice and seeds the anchor + block in place.
+// Returns the new source, a changed boolean, and any error encountered
+// while locating the block boundaries.
 func patchStoreMigrations(src string, _ sweepCtx) (string, bool, error) {
 	if !strings.Contains(src, learnMigrationAnchor) {
-		// Caller should have screened this out; defensive double-check.
-		return src, false, fmt.Errorf("learn-migrations anchor not found")
+		// Anchor missing — fall through to bootstrap mode. A successful
+		// bootstrap leaves the file in anchor-mode shape so the next
+		// sweep run hits the anchor branch and produces zero diff.
+		return bootstrapLearnMigrations(src)
 	}
 
 	// Locate the block start (the anchor line) and end (the trailing
@@ -135,6 +147,203 @@ func patchStoreMigrations(src string, _ sweepCtx) (string, bool, error) {
 	return newSrc, newSrc != src, nil
 }
 
+// bootstrapLearnMigrations seeds the anchor + learn-migrations block
+// into a pre-U6 store.go that carries the canonical `migrations`
+// slice literal but no anchor. The slice is located via AST so a
+// store.go variant whose migrations identifier was renamed or which
+// has been hand-edited into a non-templated shape gets a clear refusal
+// rather than a partial splice.
+//
+// Refusal conditions:
+//
+//   - The file does not parse as Go.
+//   - The file has no `migrations := []string{...}` short-var-decl with
+//     a slice literal initializer.
+//   - The file has more than one such declaration (ambiguous splice
+//     site).
+//   - The slice literal's source-range cannot be resolved against the
+//     in-memory source bytes.
+//
+// Successful bootstrap returns the original source with:
+//
+//   - The 6 learn-migrations entries (anchor comment + 5 CREATE
+//     statements) inserted at the slice's tail, right before the
+//     closing brace.
+//   - StoreSchemaVersion declared (or bumped) to learnSchemaVersion.
+func bootstrapLearnMigrations(src string) (string, bool, error) {
+	loc, err := findMigrationsSliceRange(src)
+	if err != nil {
+		return src, false, err
+	}
+
+	// Determine the indent for the inserted lines by looking at the
+	// last entry (or the opening brace if the slice is empty). The
+	// canonical indent under `migrations := []string{` in the
+	// generator template is two tabs.
+	indent := detectSliceEntryIndent(src, loc)
+
+	insertion := renderBootstrapLearnEntries(indent)
+
+	// Find the last comma+newline (or `{` followed by newline) before
+	// the closing brace and splice the new entries there. We insert
+	// right before the closing brace so the block ends with our final
+	// entry's trailing comma — matching the trailing-comma idiom Go
+	// composite literals require.
+	insertAt := loc.closeBrace
+	// Walk back past the immediately preceding whitespace so the
+	// closing brace stays on its own line and our insertion has its
+	// own indent.
+	for insertAt > 0 && (src[insertAt-1] == ' ' || src[insertAt-1] == '\t') {
+		insertAt--
+	}
+	if insertAt > 0 && src[insertAt-1] == '\n' {
+		// Already on its own line; insert before the indent of `}`.
+	}
+
+	newSrc := src[:insertAt] + insertion + src[insertAt:]
+
+	// Defense in depth: assert the anchor + the FTS marker are now in
+	// the output. A regression in renderBootstrapLearnEntries would
+	// otherwise pass silently.
+	if !strings.Contains(newSrc, learnMigrationAnchor) {
+		return src, false, fmt.Errorf("bootstrap: anchor not present after insertion")
+	}
+	if !strings.Contains(newSrc, learnMigrationsBlockEndMarker) {
+		return src, false, fmt.Errorf("bootstrap: FTS marker not present after insertion")
+	}
+
+	// Ensure StoreSchemaVersion is present and bumped. Pre-U6 store.go
+	// may not declare it at all; ensureStoreSchemaVersion adds it
+	// alongside the package declaration if missing.
+	newSrc = ensureStoreSchemaVersion(newSrc, learnSchemaVersion)
+
+	return newSrc, newSrc != src, nil
+}
+
+// migrationsSliceRange is the AST-derived source range of a
+// `migrations := []string{...}` composite literal.
+type migrationsSliceRange struct {
+	openBrace  int // offset of `{`
+	closeBrace int // offset of `}` (matching `{`)
+}
+
+// findMigrationsSliceRange locates the unique migrations slice literal
+// in store.go. Refuses on ambiguous or absent shapes.
+func findMigrationsSliceRange(src string) (migrationsSliceRange, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "store.go", src, parser.ParseComments)
+	if err != nil {
+		return migrationsSliceRange{}, fmt.Errorf("bootstrap: parse store.go: %w", err)
+	}
+
+	var matches []*ast.CompositeLit
+	ast.Inspect(f, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		// Match `migrations := []string{...}` — short-var-decl with a
+		// single LHS identifier named "migrations" and a single
+		// composite-literal RHS whose element type is []string.
+		if assign.Tok != token.DEFINE || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+			return true
+		}
+		ident, ok := assign.Lhs[0].(*ast.Ident)
+		if !ok || ident.Name != "migrations" {
+			return true
+		}
+		comp, ok := assign.Rhs[0].(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		arr, ok := comp.Type.(*ast.ArrayType)
+		if !ok {
+			return true
+		}
+		elt, ok := arr.Elt.(*ast.Ident)
+		if !ok || elt.Name != "string" {
+			return true
+		}
+		matches = append(matches, comp)
+		return true
+	})
+
+	if len(matches) == 0 {
+		return migrationsSliceRange{}, fmt.Errorf("bootstrap: no `migrations := []string{...}` slice found in store.go (manual review needed)")
+	}
+	if len(matches) > 1 {
+		return migrationsSliceRange{}, fmt.Errorf("bootstrap: multiple `migrations := []string{...}` slices found (manual review needed)")
+	}
+
+	comp := matches[0]
+	open := fset.Position(comp.Lbrace).Offset
+	close := fset.Position(comp.Rbrace).Offset
+	if open < 0 || close <= open || close >= len(src) {
+		return migrationsSliceRange{}, fmt.Errorf("bootstrap: cannot resolve slice brace offsets")
+	}
+	return migrationsSliceRange{openBrace: open, closeBrace: close}, nil
+}
+
+// detectSliceEntryIndent returns the leading whitespace used by entries
+// in the migrations slice. Falls back to two tabs (the canonical
+// generator-template indent) when the slice is empty or detection
+// fails.
+func detectSliceEntryIndent(src string, loc migrationsSliceRange) string {
+	// Look at the first non-blank line after `{`.
+	i := loc.openBrace + 1
+	for i < loc.closeBrace && (src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r') {
+		i++
+	}
+	if i >= loc.closeBrace {
+		return "\t\t"
+	}
+	// Walk back to the line start and collect the leading whitespace.
+	lineStart := i
+	for lineStart > 0 && src[lineStart-1] != '\n' {
+		lineStart--
+	}
+	indent := ""
+	for j := lineStart; j < i; j++ {
+		if src[j] == ' ' || src[j] == '\t' {
+			indent += string(src[j])
+		} else {
+			break
+		}
+	}
+	if indent == "" {
+		return "\t\t"
+	}
+	return indent
+}
+
+// renderBootstrapLearnEntries returns the canonical learn-migration
+// block (anchor + 5 CREATE statements) reindented to indent. Each
+// entry ends in ",\n". The output is intended to be spliced in front
+// of the slice's closing `}`.
+func renderBootstrapLearnEntries(indent string) string {
+	// canonicalLearnMigrationsBlock is rendered at the canonical
+	// "two-tab" indent (matching the generator template's depth inside
+	// migrations := []string{ ... }). Reindent each line by replacing
+	// the leading "\t\t" with the actual detected indent so a CLI
+	// whose migrations slice happens to use spaces still lines up.
+	const canonicalIndent = "\t\t"
+	var b strings.Builder
+	for _, line := range strings.Split(canonicalLearnMigrationsBlock, "\n") {
+		if line == "" {
+			b.WriteByte('\n')
+			continue
+		}
+		if strings.HasPrefix(line, canonicalIndent) {
+			b.WriteString(indent)
+			b.WriteString(line[len(canonicalIndent):])
+		} else {
+			b.WriteString(line)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 var storeSchemaVersionRe = regexp.MustCompile(`const StoreSchemaVersion = (\d+)`)
 
 // bumpStoreSchemaVersion replaces `const StoreSchemaVersion = N` with
@@ -156,4 +365,36 @@ func bumpStoreSchemaVersion(src string, target int) string {
 		}
 		return fmt.Sprintf("const StoreSchemaVersion = %d", target)
 	})
+}
+
+// ensureStoreSchemaVersion guarantees the file declares
+// `const StoreSchemaVersion = target`. If a declaration is already
+// present, falls through to bumpStoreSchemaVersion. Otherwise inserts
+// a fresh `const StoreSchemaVersion = target` declaration right after
+// the package statement so bootstrap can run against pre-U6 store.go
+// files that never carried the constant.
+func ensureStoreSchemaVersion(src string, target int) string {
+	if storeSchemaVersionRe.MatchString(src) {
+		return bumpStoreSchemaVersion(src, target)
+	}
+	// Locate the package statement so we can splice the const right
+	// after it. Conservative: only patch when we can confidently find
+	// the package line.
+	pkgIdx := strings.Index(src, "\npackage ")
+	if pkgIdx < 0 && strings.HasPrefix(src, "package ") {
+		pkgIdx = 0
+	}
+	if pkgIdx < 0 {
+		// Cannot locate package statement; leave unchanged so a
+		// downstream compile failure surfaces the issue.
+		return src
+	}
+	// Find the end of the package line.
+	lineEnd := strings.Index(src[pkgIdx:], "\n")
+	if lineEnd < 0 {
+		return src
+	}
+	lineEnd += pkgIdx + 1
+	insertion := fmt.Sprintf("\n// StoreSchemaVersion is the on-disk schema version this binary understands.\nconst StoreSchemaVersion = %d\n", target)
+	return src[:lineEnd] + insertion + src[lineEnd:]
 }
