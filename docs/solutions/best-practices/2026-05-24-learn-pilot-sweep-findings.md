@@ -129,3 +129,65 @@ The plan's Phase 2 stop thresholds (5% false-positive rate, transferability test
 
 - Sweep tool: `tools/sweep-learn-install/{main.go, store_migration.go, root_ast.go, learn_files.go, templates/cli/teach.go.tmpl, templates/cli/learn_init.go.tmpl}` from PR #826 commits `612d9f97`, `86d1d346`.
 - Pilot CLIs (no diff in this PR): `library/media-and-entertainment/espn/`, `library/sales-and-crm/contact-goat/`, `library/developer-tools/company-goat/`, `library/commerce/instacart/`, `library/media-and-entertainment/podcast-goat/`.
+
+## v2 results (after PR #826 fixes for Bug A/B/C)
+
+Following PR #826 fixes for bugs A, B, C, this section records the v2 pilot outcomes. The pilot branch was rebased onto the fixed `feat/sweep-learn-install` tip (which now carries commits `2080be2b` Bug A fix, `a0b22a78` Bug B fix, `0709363b` Bug C fix), the sweep tool was rebuilt, and the same 5 pilot CLIs were re-run.
+
+**Headline:** Bugs A, B, C are confirmed fixed — every previously-broken `go build ./...` step now passes for the 4 expected-to-succeed CLIs. Instacart still refuses with the new clean factory-shape diagnostic from the Bug B fix, as the plan predicted. **However, the sweep surfaced a new blocker, Bug D, which prevents any swept CLI from running its migrations at runtime.** All 4 swept pilots were reverted; PR #827 continues to ship only the findings doc.
+
+### Per-CLI v2 outcomes
+
+| CLI | Dry-run | Real sweep | `go build ./...` | `go test ./...` | `--help` shows teach/recall/learnings | `recall "smoke test" --agent` | Notes |
+|---|---|---|---|---|---|---|---|
+| espn | OK | wrote 30 learn files + root + store + SKILL + manifest | PASS | PASS (155/155) | PASS | **FAIL** (Bug D, runtime) | Migration: `SQL logic error: incomplete input (1)` |
+| contact-goat | OK | wrote 30 learn files + root + store + SKILL + manifest | PASS | PASS (412/412) | PASS | **FAIL** (Bug D, runtime) | Same migration error |
+| company-goat | OK | wrote 30 learn files + root + store + SKILL + manifest | PASS | **FAIL** (4 store-test failures + multiple cli tests) | PASS | **FAIL** (Bug D, runtime) | `TestSchemaVersion_StampedOnFreshDB` and 3 others fail in `internal/store` with same migration error |
+| podcast-goat | OK | wrote 30 learn files + root + store + SKILL + manifest | PASS | **FAIL** (10+ store-test failures) | PASS | **FAIL** (Bug D, runtime) | Same migration error surfaces in many store tests because `Open()` migrate failures abort fixture setup |
+| instacart | n/a (refused) | refused with `root.go uses the func Root() *cobra.Command factory shape with no rootFlags struct (recognized but unsupported by auto-sweep; manual retrofit required, see tools/sweep-learn-install/README.md)` | n/a | n/a | n/a | n/a | **Expected** — refusal diagnostic is now actionable and points at the manual-retrofit README section per plan |
+
+espn and contact-goat tests pass because their store tests do not exercise the freshly-spliced learn migrations directly — those CLIs' suites don't open `internal/store` with a fresh DB. company-goat and podcast-goat have store-test suites that do, so the bug shows up there.
+
+All 4 swept CLIs were reverted with `git checkout -- library/<cat>/<cli>/ && git clean -fd library/<cat>/<cli>/` before this commit. PR #827 continues to ship the findings doc only.
+
+### Bug D — canonical learn-migrations block emits CREATE TABLE statements missing the outer `)`
+
+Affects: every CLI swept by the post-A/B/C-fix `feat/sweep-learn-install`. The Go source-level splice succeeds, the file compiles, but the SQL emitted at migration time is malformed.
+
+In `tools/sweep-learn-install/store_migration.go`'s `canonicalLearnMigrationsBlock`, each `CREATE TABLE` statement is closed with `\n\t\t\``,\n` (raw-string close + backtick-comma) instead of `\n\t\t)\``,\n`. Concretely, lines 64–65:
+
+```go
+PRIMARY KEY (query_pattern, resource_type)
+` + "`,\n" +
+```
+
+emit:
+
+```
+PRIMARY KEY (query_pattern, resource_type)
+		`,
+```
+
+— but the matching `(` after `CREATE TABLE IF NOT EXISTS search_learnings` is never closed. The same is true for `search_patterns`, `entity_lookups`, `teach_log_metadata`, and `search_learnings_fts`. Cross-checking against the upstream template at `cli-printing-press/internal/generator/templates/store.go.tmpl`, the canonical text on disk in the sweep tool is missing the closing `)` for all 5 statements that the generator emits correctly.
+
+At runtime, `s.migrate()` runs the first malformed statement and returns `SQL logic error: incomplete input (1)`. The CLI cannot open a fresh database, so `recall`, `teach`, `learnings`, `teach-pattern`, `teach-lookup`, and every other command that opens the store, all fail. Existing databases that already carry the legacy schema continue to fire a different SQL error (`no such column: season_year` on espn, for example) because the second migration tries to add the learn tables and bombs partway through.
+
+Fix: update `canonicalLearnMigrationsBlock` in `tools/sweep-learn-install/store_migration.go` to include `\n\t\t)` immediately before each `\``,\n` boundary (5 places), and add a regression test in `store_migration_test.go` that runs the emitted migrations against an in-memory `modernc.org/sqlite` database and asserts a successful `s.migrate()` end-to-end.
+
+### Status going into Phase 2
+
+Phase 2 quantitative thresholds remain not measurable. Bugs A/B/C fixes unblocked compilation, but Bug D blocks every runtime path that opens the store. Once #826 lands a Bug D fix (one-line patch + regression test against the migrations slice) and the pilot retries with green `recall --agent` smokes, dogfood traffic can finally start accumulating and Phase 2 thresholds become measurable.
+
+**Update to "Phase 2 quantitative thresholds still pending":** Thresholds are still not measurable — Bug D fix gates measurement, same as Bug A/B/C did. The "1-2 weeks of dogfood traffic starts now" milestone is deferred until #826 ships the Bug D fix and U14 retries with passing runtime smokes across all 4 expected-to-succeed CLIs.
+
+### Recommended next step for #826
+
+Add a fourth bug-fix commit on `feat/sweep-learn-install`:
+
+```
+fix(sweep-learn): close CREATE TABLE statements in canonicalLearnMigrationsBlock
+```
+
+with a regression test that asserts `Open()`-then-`migrate()` succeeds against a fresh in-memory SQLite database whose `migrations` slice has been built from the canonical block. The expected diff is +5 lines of `)` and one new test function.
+
+Once that lands, retry U14 in this same branch shape (rebase pilot onto fixed tip, re-run sweep, validate 4 CLIs, leave instacart refused, ship per-CLI commits).
