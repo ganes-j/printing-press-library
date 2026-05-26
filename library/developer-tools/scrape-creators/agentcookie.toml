@@ -12,4 +12,4 @@ path = "~/.config/scrape-creators-pp-cli/config.toml"
 default = false
 
 [sync.keys]
-SCRAPE_CREATORS_API_KEY_AUTH = true
+"SCRAPE_CREATORS_API_KEY_AUTH" = true

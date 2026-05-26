@@ -12,4 +12,4 @@ path = "~/.config/ticketmaster-pp-cli/config.toml"
 default = false
 
 [sync.keys]
-TICKETMASTER_API_KEY = true
+"TICKETMASTER_API_KEY" = true
