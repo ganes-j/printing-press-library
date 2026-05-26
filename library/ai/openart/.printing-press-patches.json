@@ -109,6 +109,15 @@
         "internal/cli/models_novel.go"
       ],
       "validated_outcome": "go build/vet/test all green; 'models cheapest --family image --agent' now returns the catalog (Nano Banana etc.) instead of an empty list; 'models cheapest --family video' control case unchanged."
+    },
+    {
+      "id": "compare-resolution-opt-in",
+      "summary": "compare preflight only enforces --resolution when the user explicitly passed it; the implicit default no longer rejects image models.",
+      "reason": "Same family-blind --resolution default-720p pattern that bit models_novel.go. compare --models nano-banana,seedance2 (or any list including an image model) failed at preflight with 'resolution \"720p\" not supported' because PixelResolutions are pixel shapes like '1024x1024'. Same Changed() gate as models_novel.go. Greptile P1 on PR #554.",
+      "files": [
+        "internal/cli/compare.go"
+      ],
+      "validated_outcome": "go build/vet/test all green; 'compare --models nano-banana,byte-plus-seedance-2 --prompt test --dry-run' now plans both models successfully instead of erroring at nano-banana preflight."
     }
   ]
 }

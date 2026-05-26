@@ -81,7 +81,15 @@ real /suite/api/resources/<id> polling for each submission.`,
 				} else {
 					d = 0
 				}
-				if resolution != "" {
+				// PATCH(compare-resolution-opt-in): only enforce the resolution
+				// preflight when the user explicitly passed --resolution. The
+				// default "720p" is a sensible video default but image-family
+				// PixelResolutions are pixel shapes ("1024x1024"), so the
+				// implicit "720p" rejected every image model from `compare
+				// --models seedance2,nano-banana` even though the flag was
+				// never passed. Mirrors the same fix in models_novel.go.
+				// Greptile P1 on PR #554.
+				if cmd.Flags().Changed("resolution") && resolution != "" {
 					supported := m.Resolutions
 					if isImage {
 						supported = m.PixelResolutions
