@@ -42,6 +42,14 @@
         "internal/cli/auth_login_chrome.go"
       ],
       "validated_outcome": "chrome --chrome login resolves the correct LevelDB path on darwin, linux, and windows; falls back to a clear error message on other platforms."
+    },
+    {
+      "id": "cvss-validate-cia",
+      "summary": "checkCvss validates C/I/A metrics with a bool map before reading impactMetric so invalid values (e.g. C:GARBAGE) error out instead of silently scoring as C:N.",
+      "reason": "Go map zero-value returns 0 for unknown keys, which is also the legitimate value for C:N / I:N / A:N. The pre-existing av/ac/ui/pr zero-check could not validate CIA without false-rejecting C:N. A separate validity check is the minimal fix. Greptile P1 on PR #459.",
+      "files": [
+        "internal/cli/report_cvss_check.go"
+      ]
     }
   ]
 }

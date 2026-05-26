@@ -76,7 +76,15 @@ func parseCVSS31(vector string) (map[string]string, float64, error) {
 	if scope == "C" {
 		pr = prC[metrics["PR"]]
 	}
+	// PATCH(cvss-validate-cia): "N" is a valid CIA value that maps to 0, so the
+	// av/ac/ui/pr zero-check below cannot validate C/I/A. Without a separate
+	// validity check, a vector like .../C:GARBAGE/I:H/A:H scores as if C:N
+	// (lower than reality) with no error. Greptile P1 on PR #459.
 	impactMetric := map[string]float64{"N": 0, "L": 0.22, "H": 0.56}
+	validImpact := map[string]bool{"N": true, "L": true, "H": true}
+	if !validImpact[metrics["C"]] || !validImpact[metrics["I"]] || !validImpact[metrics["A"]] {
+		return nil, 0, fmt.Errorf("missing or invalid required CVSS metric")
+	}
 	c, i, a := impactMetric[metrics["C"]], impactMetric[metrics["I"]], impactMetric[metrics["A"]]
 	if av == 0 || ac == 0 || ui == 0 || pr == 0 || (scope != "U" && scope != "C") {
 		return nil, 0, fmt.Errorf("missing or invalid required CVSS metric")
