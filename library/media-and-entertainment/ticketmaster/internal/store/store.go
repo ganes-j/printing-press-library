@@ -741,6 +741,7 @@ func sqliteFieldValue(v any) any {
 func lookupFieldValue(obj map[string]any, snakeKey string) any {
 	return LookupFieldValue(obj, snakeKey)
 }
+
 // upsertAttractionsTx writes the typed-table portion of a attractions upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -797,6 +798,7 @@ func (s *Store) UpsertAttractions(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertClassificationsTx writes the typed-table portion of a classifications upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -848,6 +850,7 @@ func (s *Store) UpsertClassifications(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertEventsTx writes the typed-table portion of a events upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -908,6 +911,7 @@ func (s *Store) UpsertEvents(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertImagesTx writes the typed-table portion of a images upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -967,6 +971,7 @@ func (s *Store) UpsertImages(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertVenuesTx writes the typed-table portion of a venues upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1042,8 +1047,8 @@ func (s *Store) UpsertVenues(data json.RawMessage) error {
 // path-item.
 var resourceIDFieldOverrides = map[string]string{
 	"attractions": "id",
-	"events": "id",
-	"venues": "id",
+	"events":      "id",
+	"venues":      "id",
 }
 
 // genericIDFieldFallbacks is the runtime safety net for resources that did
@@ -1150,6 +1155,7 @@ func (s *Store) UpsertBatch(resourceType string, items []json.RawMessage) (int, 
 	}
 	return stored, extractFailures, nil
 }
+
 // SearchAttractions searches the attractions_fts index with optional filters.
 func (s *Store) SearchAttractions(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {
@@ -1177,6 +1183,7 @@ func (s *Store) SearchAttractions(query string, limit int) ([]json.RawMessage, e
 	}
 	return results, rows.Err()
 }
+
 // SearchEvents searches the events_fts index with optional filters.
 func (s *Store) SearchEvents(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {
@@ -1204,6 +1211,7 @@ func (s *Store) SearchEvents(query string, limit int) ([]json.RawMessage, error)
 	}
 	return results, rows.Err()
 }
+
 // SearchVenues searches the venues_fts index with optional filters.
 func (s *Store) SearchVenues(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {

@@ -652,6 +652,7 @@ func sqliteFieldValue(v any) any {
 func lookupFieldValue(obj map[string]any, snakeKey string) any {
 	return LookupFieldValue(obj, snakeKey)
 }
+
 // upsertMenuTx writes the typed-table portion of a menu upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -707,6 +708,7 @@ func (s *Store) UpsertMenu(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertStoresTx writes the typed-table portion of a stores upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -778,8 +780,7 @@ func (s *Store) UpsertStores(data json.RawMessage) error {
 // Includes both flat resources and dependent (parent-child) resources so a
 // child path-item annotated with x-resource-id resolves the same as a flat
 // path-item.
-var resourceIDFieldOverrides = map[string]string{
-}
+var resourceIDFieldOverrides = map[string]string{}
 
 // genericIDFieldFallbacks is the runtime safety net for resources that did
 // NOT receive a templated IDField. API-specific names belong in spec
@@ -873,6 +874,7 @@ func (s *Store) UpsertBatch(resourceType string, items []json.RawMessage) (int, 
 	}
 	return stored, extractFailures, nil
 }
+
 // SearchMenu searches the menu_fts index with optional filters.
 func (s *Store) SearchMenu(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {

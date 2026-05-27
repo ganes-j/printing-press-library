@@ -1129,6 +1129,7 @@ func sqliteFieldValue(v any) any {
 func lookupFieldValue(obj map[string]any, snakeKey string) any {
 	return LookupFieldValue(obj, snakeKey)
 }
+
 // upsertAuthorsTx writes the typed-table portion of a authors upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1186,6 +1187,7 @@ func (s *Store) UpsertAuthors(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertAwardsTx writes the typed-table portion of a awards upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1253,6 +1255,7 @@ func (s *Store) UpsertAwards(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertConceptsTx writes the typed-table portion of a concepts upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1313,6 +1316,7 @@ func (s *Store) UpsertConcepts(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertContinentsTx writes the typed-table portion of a continents upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1366,6 +1370,7 @@ func (s *Store) UpsertContinents(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertCountriesTx writes the typed-table portion of a countries upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1426,6 +1431,7 @@ func (s *Store) UpsertCountries(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertDomainsTx writes the typed-table portion of a domains upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1482,6 +1488,7 @@ func (s *Store) UpsertDomains(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertFieldsTx writes the typed-table portion of a fields upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1538,6 +1545,7 @@ func (s *Store) UpsertFields(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertFundersTx writes the typed-table portion of a funders upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1599,6 +1607,7 @@ func (s *Store) UpsertFunders(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertInstitutionsTx writes the typed-table portion of a institutions upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1660,6 +1669,7 @@ func (s *Store) UpsertInstitutions(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertKeywordsTx writes the typed-table portion of a keywords upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1715,6 +1725,7 @@ func (s *Store) UpsertKeywords(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertLanguagesTx writes the typed-table portion of a languages upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1770,6 +1781,7 @@ func (s *Store) UpsertLanguages(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertPublishersTx writes the typed-table portion of a publishers upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1826,6 +1838,7 @@ func (s *Store) UpsertPublishers(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertSdgsTx writes the typed-table portion of a sdgs upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1884,6 +1897,7 @@ func (s *Store) UpsertSdgs(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertSourcesTx writes the typed-table portion of a sources upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1947,6 +1961,7 @@ func (s *Store) UpsertSources(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertSubfieldsTx writes the typed-table portion of a subfields upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2003,6 +2018,7 @@ func (s *Store) UpsertSubfields(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertTopicsTx writes the typed-table portion of a topics upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2059,6 +2075,7 @@ func (s *Store) UpsertTopics(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertWorksTx writes the typed-table portion of a works upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2134,20 +2151,20 @@ func (s *Store) UpsertWorks(data json.RawMessage) error {
 // child path-item annotated with x-resource-id resolves the same as a flat
 // path-item.
 var resourceIDFieldOverrides = map[string]string{
-	"awards": "id",
-	"concepts": "id",
-	"continents": "id",
-	"countries": "id",
-	"domains": "id",
-	"fields": "id",
+	"awards":            "id",
+	"concepts":          "id",
+	"continents":        "id",
+	"countries":         "id",
+	"domains":           "id",
+	"fields":            "id",
 	"institution-types": "id",
-	"languages": "id",
-	"licenses": "id",
-	"sdgs": "id",
-	"source-types": "id",
-	"subfields": "id",
-	"text": "id",
-	"work-types": "id",
+	"languages":         "id",
+	"licenses":          "id",
+	"sdgs":              "id",
+	"source-types":      "id",
+	"subfields":         "id",
+	"text":              "id",
+	"work-types":        "id",
 }
 
 // genericIDFieldFallbacks is the runtime safety net for resources that did

@@ -1151,6 +1151,7 @@ func sqliteFieldValue(v any) any {
 func lookupFieldValue(obj map[string]any, snakeKey string) any {
 	return LookupFieldValue(obj, snakeKey)
 }
+
 // upsertAdvertisementOpportunitiesTx writes the typed-table portion of a advertisement_opportunities upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1205,6 +1206,7 @@ func (s *Store) UpsertAdvertisementOpportunities(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertAuthorsTx writes the typed-table portion of a authors upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1259,6 +1261,7 @@ func (s *Store) UpsertAuthors(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertAutomationsTx writes the typed-table portion of a automations upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1312,6 +1315,7 @@ func (s *Store) UpsertAutomations(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertEmailsTx writes the typed-table portion of a emails upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1363,6 +1367,7 @@ func (s *Store) UpsertEmails(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertJourneysTx writes the typed-table portion of a journeys upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1414,6 +1419,7 @@ func (s *Store) UpsertJourneys(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertBulkSubscriptionUpdatesTx writes the typed-table portion of a bulk_subscription_updates upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1471,6 +1477,7 @@ func (s *Store) UpsertBulkSubscriptionUpdates(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertBulkSubscriptionsTx writes the typed-table portion of a bulk_subscriptions upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1522,6 +1529,7 @@ func (s *Store) UpsertBulkSubscriptions(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertConditionSetsTx writes the typed-table portion of a condition_sets upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1577,6 +1585,7 @@ func (s *Store) UpsertConditionSets(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertCustomFieldsTx writes the typed-table portion of a custom_fields upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1629,6 +1638,7 @@ func (s *Store) UpsertCustomFields(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertDataPrivacyTx writes the typed-table portion of a data_privacy upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1685,6 +1695,7 @@ func (s *Store) UpsertDataPrivacy(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertEmailBlastsTx writes the typed-table portion of a email_blasts upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1740,6 +1751,7 @@ func (s *Store) UpsertEmailBlasts(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertEngagementsTx writes the typed-table portion of a engagements upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1796,6 +1808,7 @@ func (s *Store) UpsertEngagements(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertNewsletterListsTx writes the typed-table portion of a newsletter_lists upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1854,6 +1867,7 @@ func (s *Store) UpsertNewsletterLists(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertNewsletterListsSubscriptionsTx writes the typed-table portion of a newsletter_lists_subscriptions upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1905,6 +1919,7 @@ func (s *Store) UpsertNewsletterListsSubscriptions(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertPollsTx writes the typed-table portion of a polls upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -1963,6 +1978,7 @@ func (s *Store) UpsertPolls(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertResponsesTx writes the typed-table portion of a responses upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2014,6 +2030,7 @@ func (s *Store) UpsertResponses(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertPostTemplatesTx writes the typed-table portion of a post_templates upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2065,6 +2082,7 @@ func (s *Store) UpsertPostTemplates(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertPostsTx writes the typed-table portion of a posts upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2135,6 +2153,7 @@ func (s *Store) UpsertPosts(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertPublicationsTx writes the typed-table portion of a publications upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2188,6 +2207,7 @@ func (s *Store) UpsertPublications(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertReferralProgramTx writes the typed-table portion of a referral_program upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2238,6 +2258,7 @@ func (s *Store) UpsertReferralProgram(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertSegmentsTx writes the typed-table portion of a segments upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2294,6 +2315,7 @@ func (s *Store) UpsertSegments(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertMembersTx writes the typed-table portion of a members upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2345,6 +2367,7 @@ func (s *Store) UpsertMembers(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertRecalculateTx writes the typed-table portion of a recalculate upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2395,6 +2418,7 @@ func (s *Store) UpsertRecalculate(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertResultsTx writes the typed-table portion of a results upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2446,6 +2470,7 @@ func (s *Store) UpsertResults(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertSubscriptionsTx writes the typed-table portion of a subscriptions upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2507,6 +2532,7 @@ func (s *Store) UpsertSubscriptions(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertJwtTokenTx writes the typed-table portion of a jwt_token upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2557,6 +2583,7 @@ func (s *Store) UpsertJwtToken(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertTagsTx writes the typed-table portion of a tags upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2607,6 +2634,7 @@ func (s *Store) UpsertTags(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertTiersTx writes the typed-table portion of a tiers upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2660,6 +2688,7 @@ func (s *Store) UpsertTiers(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertWebhooksTx writes the typed-table portion of a webhooks upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2714,6 +2743,7 @@ func (s *Store) UpsertWebhooks(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertTestsTx writes the typed-table portion of a tests upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2764,6 +2794,7 @@ func (s *Store) UpsertTests(data json.RawMessage) error {
 
 	return tx.Commit()
 }
+
 // upsertWorkspacesTx writes the typed-table portion of a workspaces upsert
 // inside an existing transaction. The caller is responsible for the generic
 // resources insert (via upsertGenericResourceTx) and for committing the tx.
@@ -2828,25 +2859,25 @@ func (s *Store) UpsertWorkspaces(data json.RawMessage) error {
 // child path-item annotated with x-resource-id resolves the same as a flat
 // path-item.
 var resourceIDFieldOverrides = map[string]string{
-	"authors": "id",
-	"automations": "id",
-	"condition_sets": "id",
-	"email_blasts": "id",
-	"emails": "id",
-	"journeys": "id",
-	"members": "id",
-	"newsletter_lists": "id",
+	"authors":                        "id",
+	"automations":                    "id",
+	"condition_sets":                 "id",
+	"email_blasts":                   "id",
+	"emails":                         "id",
+	"journeys":                       "id",
+	"members":                        "id",
+	"newsletter_lists":               "id",
 	"newsletter_lists_subscriptions": "id",
-	"polls": "id",
-	"post_templates": "id",
-	"posts": "id",
-	"publications": "id",
-	"publications_subscriptions": "id",
-	"referral_program": "id",
-	"responses": "id",
-	"segments": "id",
-	"tiers": "id",
-	"webhooks": "id",
+	"polls":                          "id",
+	"post_templates":                 "id",
+	"posts":                          "id",
+	"publications":                   "id",
+	"publications_subscriptions":     "id",
+	"referral_program":               "id",
+	"responses":                      "id",
+	"segments":                       "id",
+	"tiers":                          "id",
+	"webhooks":                       "id",
 }
 
 // genericIDFieldFallbacks is the runtime safety net for resources that did
@@ -3057,6 +3088,7 @@ func (s *Store) UpsertBatch(resourceType string, items []json.RawMessage) (int, 
 	}
 	return stored, extractFailures, nil
 }
+
 // SearchAutomations searches the automations_fts index with optional filters.
 func (s *Store) SearchAutomations(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {
@@ -3084,6 +3116,7 @@ func (s *Store) SearchAutomations(query string, limit int) ([]json.RawMessage, e
 	}
 	return results, rows.Err()
 }
+
 // SearchNewsletterLists searches the newsletter_lists_fts index with optional filters.
 func (s *Store) SearchNewsletterLists(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {
@@ -3111,6 +3144,7 @@ func (s *Store) SearchNewsletterLists(query string, limit int) ([]json.RawMessag
 	}
 	return results, rows.Err()
 }
+
 // SearchPolls searches the polls_fts index with optional filters.
 func (s *Store) SearchPolls(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {
@@ -3138,6 +3172,7 @@ func (s *Store) SearchPolls(query string, limit int) ([]json.RawMessage, error) 
 	}
 	return results, rows.Err()
 }
+
 // SearchTiers searches the tiers_fts index with optional filters.
 func (s *Store) SearchTiers(query string, limit int) ([]json.RawMessage, error) {
 	if limit <= 0 {
