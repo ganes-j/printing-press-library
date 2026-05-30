@@ -7701,6 +7701,64 @@
       }
     },
     {
+      "name": "revenuecat",
+      "category": "payments",
+      "api": "RevenueCat",
+      "description": "Every RevenueCat v2 endpoint, plus a local database, offline search",
+      "search_terms": [
+        "revenuecat",
+        "revenuecat-pp-cli",
+        "Every RevenueCat v2 endpoint, plus a local database, offline search, and revenue/churn/refund intelligence the dashboard charts can't compose.",
+        "Revenue snapshot",
+        "revenue-snapshot",
+        "Point-in-time MRR, ARR, active subscriptions, trials, and revenue in your chosen currency, with deltas against your last snapshot.",
+        "MRR trend",
+        "mrr-trend",
+        "MRR over time with new / expansion / contraction / churn movement decomposition and week-over-week deltas.",
+        "Churn watch",
+        "churn-watch",
+        "Which subscriptions flipped to billing-issue, grace, expired, or cancelled in a window, with per-subscription dollar exposure.",
+        "Dunning alert",
+        "dunning-alert",
+        "Subscriptions still in grace or billing-issue state joined with their unpaid invoices, ranked by recoverable amount.",
+        "Entitlement rollup",
+        "entitlement-rollup",
+        "Per-entitlement active-customer counts and product attachments, flagging customers whose entitlement state disagrees with their subscription state.",
+        "Refund cascade",
+        "refund-cascade",
+        "Traces a subscription or purchase through its transactions, refund history, and resulting entitlement loss; --apply issues the refund.",
+        "Trial funnel",
+        "trial-funnel",
+        "New trials to conversion-to-paying funnel with stage-to-stage drop-off.",
+        "Webhook audit",
+        "webhook-audit",
+        "Lists configured webhook integrations grouped by destination host, flagging duplicate or stale destinations."
+      ],
+      "path": "library/payments/revenuecat",
+      "printer": "jcastillo725",
+      "printer_name": "Joseph Alvin Castillo",
+      "creator": {
+        "handle": "jcastillo725",
+        "name": "Joseph Alvin Castillo"
+      },
+      "mcp": {
+        "binary": "revenuecat-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 100,
+        "public_tool_count": 0,
+        "auth_type": "bearer_token",
+        "env_vars": [
+          "REVENUECAT_API_KEY",
+          "DEVELOPER_BEARER_AUTH"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "openapi3"
+      }
+    },
+    {
       "name": "roam",
       "category": "productivity",
       "api": "Roam HQ",
