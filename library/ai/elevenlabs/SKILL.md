@@ -72,6 +72,13 @@ These capabilities aren't available in any other tool for this API.
   ```bash
   elevenlabs-pp-cli dialogue cast --line narrator='Welcome.' --cast narrator=JBFqnCBsd6RMkjVDRZzb --out dialogue.mp3 --agent
   ```
+- **`podcast produce`** - Turn an annotated Markdown script into a finished podcast episode with multi-speaker voice, music beds ducked under speech, SFX, chapters, transcript files, and EBU R128 loudness normalization.
+
+  _Agents can produce a durable podcast package from one script while the CLI preflights ffmpeg before any audio spend and writes a machine-readable manifest._
+
+  ```bash
+  elevenlabs-pp-cli podcast produce --script episode.md --out ./episode --agent
+  ```
 
 ## Command Reference
 
@@ -238,6 +245,10 @@ These capabilities aren't available in any other tool for this API.
 **docs** — Manage docs
 
 - `elevenlabs-pp-cli docs` — Redirect To Mintlify
+
+**podcast** — Podcast production workflows
+
+- `elevenlabs-pp-cli podcast produce` — Turn an annotated podcast script into a mixed episode
 
 **dubbing** — Manage dubbing
 

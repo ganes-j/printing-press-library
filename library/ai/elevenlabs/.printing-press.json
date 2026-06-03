@@ -47,6 +47,11 @@
       "name": "Dialogue Cast",
       "command": "dialogue cast",
       "description": "Render speaker-labelled dialogue lines by resolving speaker-to-voice assignments and saving audio."
+    },
+    {
+      "name": "Podcast Produce",
+      "command": "podcast produce",
+      "description": "Turn an annotated script into a finished, mixed podcast episode: multi-host VO, music beds ducked under speech, SFX, EBU R128 loudness, plus transcript and chapters. Requires local ffmpeg."
     }
   ]
 }

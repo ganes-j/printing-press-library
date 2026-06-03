@@ -229,6 +229,7 @@ Run 'elevenlabs-pp-cli doctor' to verify auth and connectivity.`,
 	rootCmd.AddCommand(newVoiceCmd(flags))
 	rootCmd.AddCommand(newTTSCmd(flags))
 	rootCmd.AddCommand(newDialogueCmd(flags))
+	rootCmd.AddCommand(newPodcastCmd(flags))
 	rootCmd.AddCommand(newUserCmd(flags))
 	rootCmd.AddCommand(newVoicesCmd(flags))
 	rootCmd.AddCommand(newWorkspaceCmd(flags))
