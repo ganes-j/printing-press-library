@@ -104,7 +104,8 @@ func newWeeklyReviewCmd(flags *rootFlags) *cobra.Command {
 			})
 			out := map[string]any{
 				"dry_run":            true,
-				"target_acos":        targetACOS,
+				"target_acos":        plan.TargetACOS,
+				"target_acos_pct":    targetACOS,
 				"target_acos_source": targetSource,
 				"campaign_report":    campaignReport,
 				"search_term_report": searchTermReport,
