@@ -26,8 +26,16 @@ func newNovelDossierCmd(flags *rootFlags) *cobra.Command {
 exposes no zaaknummer filter; this walks the search index over a date range
 and filters locally by matching zaaknummer on each decision's metadata.
 
-Provide --court to restrict to a single court (much faster) or --from /
---to to bound the date range. The default range is the current year.`,
+Default date window is the last 10 years ending today — wide enough to
+capture a typical case chain (rechtbank → gerechtshof → cassatie can
+easily span 5+ years per instance). Without --court that's a substantial
+number of API calls, paced via the shared 10 req/s limiter; the page
+hard cap (20 pages of 1000 entries) is the upper bound on the scan.
+
+Provide --court to restrict to a single court (orders of magnitude faster)
+or --from / --to to narrow the date range. --timeout bounds the entire
+scan; on cancellation dossier returns the partial result with a clean
+warning instead of silently truncating.`,
 		Example: `  rechtspraak-pp-cli dossier 22/00155
   rechtspraak-pp-cli dossier 22/00155 --court HR
   rechtspraak-pp-cli dossier 22/00155 --from 2022-01-01 --to 2024-12-31 --json`,

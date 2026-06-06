@@ -47,7 +47,26 @@ summary + body).`,
 			}
 			pair := pickConclusiePair(d, parsed.Court)
 			if pair == "" {
-				return fmt.Errorf("no conclusie/uitspraak pair found in relations for %s", ecli)
+				// Surface the relations we DID see so the user can tell
+				// whether the decision genuinely lacks a conclusie pair
+				// (common for HR 81 RO non-substantive rulings) or whether
+				// they passed the wrong ECLI (e.g. a Hof decision that
+				// has cassatie + eerdere-aanleg edges but no PHR pair).
+				seen := make([]string, 0, len(d.Relations))
+				for _, rel := range d.Relations {
+					if rel.Target == "" {
+						continue
+					}
+					label := shortFromURI(rel.TypeRelatie)
+					if label == "" {
+						label = "relation"
+					}
+					seen = append(seen, fmt.Sprintf("%s→%s", label, rel.Target))
+				}
+				if len(seen) == 0 {
+					return fmt.Errorf("no conclusie/uitspraak pair found for %s: this decision has no relations at all (try `rechtspraak-pp-cli chain %s` to confirm)", ecli, ecli)
+				}
+				return fmt.Errorf("no conclusie/uitspraak pair found for %s: relations present but none match the requested direction (%s). Other edges seen: %s", ecli, pairDirection(parsed.Court, d.Type), strings.Join(seen, ", "))
 			}
 			result := map[string]any{
 				"source":      ecli,
@@ -88,6 +107,12 @@ summary + body).`,
 // pairing pattern. The logic:
 //   - HR uitspraak → find Conclusie relation (links to PHR ECLI)
 //   - PHR conclusie → find Cassatie relation (links to HR ECLI)
+//
+// Returns empty string when no relation explicitly matches the requested
+// direction. Callers MUST treat empty as "no pair found" and surface a
+// clear error — silently falling back to the first relation (e.g. an
+// eerdere-aanleg edge pointing at a Hof) would return a structurally
+// related but semantically wrong ECLI, which is worse than a clean miss.
 func pickConclusiePair(d *rechtspraak.Decision, sourceCourt string) string {
 	if d == nil {
 		return ""
@@ -104,10 +129,6 @@ func pickConclusiePair(d *rechtspraak.Decision, sourceCourt string) string {
 				return rel.Target
 			}
 		}
-	}
-	// Fall back to the first relation if no specific match.
-	if len(d.Relations) > 0 {
-		return d.Relations[0].Target
 	}
 	return ""
 }

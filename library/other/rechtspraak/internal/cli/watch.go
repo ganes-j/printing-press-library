@@ -131,33 +131,58 @@ for cron / agent loops:
 					maxMod = time.Now().UTC()
 				}
 			}
-			persistWatchCursor(watchKey, WatchCursor{
+			// Build the cursor we WANT to persist, but do not write it yet.
+			// Persisting before output emits would silently drop fresh
+			// ECLIs from future runs if anything between here and the
+			// final flush goes wrong (SIGKILL, broken pipe to head/grep,
+			// disk full, agent deadline). The cron use case ("ECLIs I
+			// haven't reported yet") relies on this ordering: write
+			// output FIRST, then commit the cursor only if every byte
+			// landed cleanly.
+			newCursor := WatchCursor{
 				LastModified: maxMod.Format("2006-01-02T15:04:05"),
 				Seen:         appendCursorECLIs(cursor.Seen, fresh, 5000),
 				Filter:       watchFilter,
-			})
+			}
 
+			// Emit output. Each branch writes to stdout and then flushes
+			// via the cobra OutOrStdout helper; persistence happens AFTER
+			// the branch returns successfully.
 			if flagQuiet && len(fresh) == 0 {
+				persistWatchCursor(watchKey, newCursor)
 				return nil
 			}
 			if shouldEmitJSON(cmd.OutOrStdout(), flags) {
-				return writeJSONOut(cmd.OutOrStdout(), map[string]any{
+				if err := writeJSONOut(cmd.OutOrStdout(), map[string]any{
 					"new_count":  len(fresh),
 					"total_seen": total,
 					"since":      fromMod,
 					"entries":    fresh,
-				})
+				}); err != nil {
+					return err
+				}
+				persistWatchCursor(watchKey, newCursor)
+				return nil
 			}
 			if len(fresh) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No new decisions.")
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "No new decisions."); err != nil {
+					return err
+				}
+				persistWatchCursor(watchKey, newCursor)
 				return nil
 			}
 			sort.SliceStable(fresh, func(i, j int) bool {
 				return fresh[i].Updated.Before(fresh[j].Updated)
 			})
 			for _, e := range fresh {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s  %s\n", e.ECLI, e.Title)
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s  %s\n", e.ECLI, e.Title); err != nil {
+					// Broken pipe (e.g. piping to head | grep) — bail
+					// without persisting so the unwritten ECLIs are
+					// re-emitted on the next run.
+					return err
+				}
 			}
+			persistWatchCursor(watchKey, newCursor)
 			return nil
 		},
 	}
