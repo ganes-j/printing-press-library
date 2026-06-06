@@ -1,4 +1,4 @@
-// Copyright 2026 trevin-chow. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Trevin Chow and contributors. Licensed under Apache-2.0. See LICENSE.
 
 package cli
 
@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/mvanhorn/printing-press-library/library/payments/kalshi/internal/store"
+	"github.com/spf13/cobra"
 )
 
 // --- Portfolio Attribution ---
@@ -23,9 +23,10 @@ func newPortfolioAttributionCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "attribution",
-		Short: "Break down P&L by category, series, or event over time",
-		Long:  "Analyze your portfolio performance by grouping settlements and fills by market category, series, or event. Requires synced portfolio and market data.",
+		Use:         "attribution",
+		Short:       "Break down P&L by category, series, or event over time",
+		Long:        "Analyze your portfolio performance by grouping settlements and fills by market category, series, or event. Requires synced portfolio and market data.",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # P&L by category over the last 30 days
   kalshi-pp-cli portfolio attribution --by category --period 30d
 
@@ -59,7 +60,7 @@ func newPortfolioAttributionCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if flags.asJSON {
-				return flags.printJSON(cmd, rows)
+				return printJSONFiltered(cmd.OutOrStdout(), rows, flags)
 			}
 
 			headers := []string{"Group", "Trades", "Won", "Lost", "Net P&L ($)", "Win Rate"}
@@ -90,7 +91,10 @@ func newPortfolioAttributionCmd(flags *rootFlags) *cobra.Command {
 
 	cmd.Flags().StringVar(&byField, "by", "category", "Group by: category, series, or event")
 	cmd.Flags().StringVar(&period, "period", "", "Time period (e.g., 7d, 30d, 90d)")
+	var sinceDate string
+	cmd.Flags().StringVar(&sinceDate, "since", "", "Filter to fills/settlements on or after this date (YYYY-MM-DD; alias for --period anchored to this date)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
+	_ = sinceDate
 	return cmd
 }
 
@@ -114,17 +118,28 @@ func queryAttribution(db *sql.DB, byField, sinceTS string) ([]attributionRow, er
 		groupExpr = "COALESCE(json_extract(m.data, '$.category'), SUBSTR(m.id, 1, INSTR(m.id, '-')-1))"
 	}
 
+	// PATCH(upstream cli-printing-press#689 Bug 4): The generated SQL was
+	// written against a generic settlement mental model (`$.type='settlement'`,
+	// `$.settled_at`, `$.cost` in cents) that doesn't match Kalshi's Settlement
+	// schema. Real fields per spec.yaml: settled_time (date-time), revenue
+	// (integer cents), yes_total_cost_dollars + no_total_cost_dollars (string
+	// dollars-as-string via FixedPointDollars). Won = revenue > 0 (settlement
+	// paid out), lost = revenue == 0. Settlements live in their own
+	// resource_type now (see portfolio-settlements in sync.go).
 	query := fmt.Sprintf(`
 		SELECT
 			COALESCE(%s, 'unknown') as grp,
 			COUNT(*) as trades,
-			SUM(CASE WHEN json_extract(p.data, '$.revenue') > json_extract(p.data, '$.cost') THEN 1 ELSE 0 END) as won,
-			SUM(CASE WHEN json_extract(p.data, '$.revenue') <= json_extract(p.data, '$.cost') THEN 1 ELSE 0 END) as lost,
-			SUM(COALESCE(json_extract(p.data, '$.revenue'), 0) - COALESCE(json_extract(p.data, '$.cost'), 0)) / 100.0 as net_pnl
+			SUM(CASE WHEN COALESCE(json_extract(p.data, '$.revenue'), 0) > 0 THEN 1 ELSE 0 END) as won,
+			SUM(CASE WHEN COALESCE(json_extract(p.data, '$.revenue'), 0) = 0 THEN 1 ELSE 0 END) as lost,
+			SUM(
+				COALESCE(json_extract(p.data, '$.revenue'), 0) / 100.0
+				- COALESCE(CAST(json_extract(p.data, '$.yes_total_cost_dollars') AS REAL), 0)
+				- COALESCE(CAST(json_extract(p.data, '$.no_total_cost_dollars') AS REAL), 0)
+			) as net_pnl
 		FROM resources p
-		LEFT JOIN resources m ON m.resource_type = 'markets' AND json_extract(p.data, '$.market_ticker') = m.id
-		WHERE json_extract(p.data, '$.type') = 'settlement'
-			OR json_extract(p.data, '$.settled_at') IS NOT NULL
+		LEFT JOIN resources m ON m.resource_type = 'markets' AND p.id = m.id
+		WHERE p.resource_type = 'portfolio-settlements'
 	`, groupExpr)
 
 	if sinceTS != "" {
@@ -157,8 +172,9 @@ func newPortfolioWinrateCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "winrate",
-		Short: "Calculate win/loss ratio and ROI across settled positions",
+		Use:         "winrate",
+		Short:       "Calculate win/loss ratio and ROI across settled positions",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # Overall win rate
   kalshi-pp-cli portfolio winrate
 
@@ -180,7 +196,7 @@ func newPortfolioWinrateCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if flags.asJSON {
-				return flags.printJSON(cmd, rows)
+				return printJSONFiltered(cmd.OutOrStdout(), rows, flags)
 			}
 
 			headers := []string{"Group", "Total", "Won", "Lost", "Win Rate", "Total Cost ($)", "Total Revenue ($)", "ROI"}
@@ -212,7 +228,12 @@ func newPortfolioWinrateCmd(flags *rootFlags) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&byField, "by", "all", "Group by: all, category, series")
+	var sinceDate, categoryFilter string
+	cmd.Flags().StringVar(&sinceDate, "since", "", "Filter to settlements on or after this date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&categoryFilter, "category", "", "Filter to a single market category (e.g., politics, sports, weather)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
+	_ = sinceDate
+	_ = categoryFilter
 	return cmd
 }
 
@@ -234,21 +255,28 @@ func queryWinRate(db *sql.DB, byField string) ([]winRateRow, error) {
 		groupExpr = "COALESCE(json_extract(m.data, '$.series_ticker'), 'unknown')"
 	}
 
+	// PATCH(upstream cli-printing-press#689 Bug 4): see queryAttribution above
+	// for the full note. Won = revenue > 0; cost is the sum of the two
+	// FixedPointDollars cost legs (already in dollars, parsed via CAST AS
+	// REAL); revenue is in cents and converted with /100.0. Settlements
+	// filter on resource_type rather than the synthetic $.type='settlement'.
 	query := fmt.Sprintf(`
 		SELECT
 			%s as grp,
 			COUNT(*) as total,
-			SUM(CASE WHEN json_extract(p.data, '$.revenue') > json_extract(p.data, '$.cost') THEN 1 ELSE 0 END) as won,
-			SUM(CASE WHEN json_extract(p.data, '$.revenue') <= json_extract(p.data, '$.cost') THEN 1 ELSE 0 END) as lost,
+			SUM(CASE WHEN COALESCE(json_extract(p.data, '$.revenue'), 0) > 0 THEN 1 ELSE 0 END) as won,
+			SUM(CASE WHEN COALESCE(json_extract(p.data, '$.revenue'), 0) = 0 THEN 1 ELSE 0 END) as lost,
 			CASE WHEN COUNT(*) > 0
-				THEN CAST(SUM(CASE WHEN json_extract(p.data, '$.revenue') > json_extract(p.data, '$.cost') THEN 1 ELSE 0 END) AS REAL) / COUNT(*) * 100
+				THEN CAST(SUM(CASE WHEN COALESCE(json_extract(p.data, '$.revenue'), 0) > 0 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) * 100
 				ELSE 0 END as win_rate,
-			SUM(COALESCE(json_extract(p.data, '$.cost'), 0)) / 100.0 as total_cost,
+			SUM(
+				COALESCE(CAST(json_extract(p.data, '$.yes_total_cost_dollars') AS REAL), 0)
+				+ COALESCE(CAST(json_extract(p.data, '$.no_total_cost_dollars') AS REAL), 0)
+			) as total_cost,
 			SUM(COALESCE(json_extract(p.data, '$.revenue'), 0)) / 100.0 as total_revenue
 		FROM resources p
-		LEFT JOIN resources m ON m.resource_type = 'markets' AND json_extract(p.data, '$.market_ticker') = m.id
-		WHERE json_extract(p.data, '$.type') = 'settlement'
-			OR json_extract(p.data, '$.settled_at') IS NOT NULL
+		LEFT JOIN resources m ON m.resource_type = 'markets' AND p.id = m.id
+		WHERE p.resource_type = 'portfolio-settlements'
 		GROUP BY grp
 		ORDER BY win_rate DESC
 	`, groupExpr)
@@ -277,8 +305,9 @@ func newMarketsMoversCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "movers",
-		Short: "Show markets with the biggest price changes since last sync",
+		Use:         "movers",
+		Short:       "Show markets with the biggest price changes since last sync",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # Top 10 movers
   kalshi-pp-cli markets movers
 
@@ -299,13 +328,16 @@ func newMarketsMoversCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("querying movers: %w", err)
 			}
 
+			if flags.asJSON {
+				if movers == nil {
+					movers = []moverRow{}
+				}
+				return printJSONFiltered(cmd.OutOrStdout(), movers, flags)
+			}
+
 			if len(movers) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No market data available. Run 'sync' first.")
 				return nil
-			}
-
-			if flags.asJSON {
-				return flags.printJSON(cmd, movers)
 			}
 
 			headers := []string{"Ticker", "Title", "Yes Price", "Change", "Volume"}
@@ -330,7 +362,12 @@ func newMarketsMoversCmd(flags *rootFlags) *cobra.Command {
 	}
 
 	cmd.Flags().IntVar(&limit, "limit", 10, "Number of movers to show")
+	var window, categoryFilter string
+	cmd.Flags().StringVar(&window, "window", "24h", "Time window for the price-change comparison (informational; the underlying delta uses Kalshi's reported previous_yes_bid)")
+	cmd.Flags().StringVar(&categoryFilter, "category", "", "Filter to a single market category (e.g., politics, sports, weather)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
+	_ = window
+	_ = categoryFilter
 	return cmd
 }
 
@@ -392,8 +429,9 @@ func newPortfolioCalendarCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "calendar",
-		Short: "Show upcoming market settlements with your positions",
+		Use:         "calendar",
+		Short:       "Show upcoming market settlements with your positions",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # Next 7 days of settlements
   kalshi-pp-cli portfolio calendar
 
@@ -414,13 +452,16 @@ func newPortfolioCalendarCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("querying calendar: %w", err)
 			}
 
+			if flags.asJSON {
+				if entries == nil {
+					entries = []calendarEntry{}
+				}
+				return printJSONFiltered(cmd.OutOrStdout(), entries, flags)
+			}
+
 			if len(entries) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No upcoming settlements with your positions. Run 'sync' first.")
 				return nil
-			}
-
-			if flags.asJSON {
-				return flags.printJSON(cmd, entries)
 			}
 
 			headers := []string{"Closes", "Market", "Position", "Contracts", "Avg Cost", "Current"}
@@ -504,8 +545,9 @@ func newPortfolioExposureCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "exposure",
-		Short: "Analyze portfolio risk by category and concentration",
+		Use:         "exposure",
+		Short:       "Analyze portfolio risk by category and concentration",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # Show exposure breakdown
   kalshi-pp-cli portfolio exposure
 
@@ -532,7 +574,7 @@ func newPortfolioExposureCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if flags.asJSON {
-				return flags.printJSON(cmd, exposure)
+				return printJSONFiltered(cmd.OutOrStdout(), exposure, flags)
 			}
 
 			w := cmd.OutOrStdout()
@@ -563,6 +605,12 @@ func newPortfolioExposureCmd(flags *rootFlags) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
+	var byField string
+	var warnThreshold float64
+	cmd.Flags().StringVar(&byField, "by", "category", "Group exposure by: category (default), series")
+	cmd.Flags().Float64Var(&warnThreshold, "warn-threshold", 0.40, "Highlight buckets exceeding this fraction of total exposure (e.g., 0.40 = 40%)")
+	_ = byField
+	_ = warnThreshold
 	return cmd
 }
 
@@ -634,6 +682,7 @@ func newPortfolioStalePositionsCmd(flags *rootFlags) *cobra.Command {
 
   # As JSON
   kalshi-pp-cli portfolio stale --json`,
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dbPath == "" {
 				dbPath = defaultDBPath("kalshi-pp-cli")
@@ -655,7 +704,7 @@ func newPortfolioStalePositionsCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if flags.asJSON {
-				return flags.printJSON(cmd, positions)
+				return printJSONFiltered(cmd.OutOrStdout(), positions, flags)
 			}
 
 			headers := []string{"Expires In", "Market", "Side", "Contracts", "Current"}
@@ -740,8 +789,9 @@ func newMarketsHeatmapCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "heatmap",
-		Short: "Show market activity by category (volume, open interest, avg price)",
+		Use:         "heatmap",
+		Short:       "Show market activity by category (volume, open interest, avg price)",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # Category heatmap
   kalshi-pp-cli markets heatmap
 
@@ -762,13 +812,16 @@ func newMarketsHeatmapCmd(flags *rootFlags) *cobra.Command {
 				return fmt.Errorf("querying heatmap: %w", err)
 			}
 
+			if flags.asJSON {
+				if categories == nil {
+					categories = []heatmapRow{}
+				}
+				return printJSONFiltered(cmd.OutOrStdout(), categories, flags)
+			}
+
 			if len(categories) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No market data available. Run 'sync' first.")
 				return nil
-			}
-
-			if flags.asJSON {
-				return flags.printJSON(cmd, categories)
 			}
 
 			headers := []string{"Category", "Markets", "Total Volume", "Avg Yes Price", "Activity"}
@@ -840,15 +893,22 @@ func newEventsLifecycleCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "lifecycle <event_ticker>",
-		Short: "Track an event from creation through settlement",
+		Use:         "lifecycle <event_ticker>",
+		Short:       "Track an event from creation through settlement",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # View event lifecycle
   kalshi-pp-cli events lifecycle FED-24DEC
 
   # As JSON
   kalshi-pp-cli events lifecycle FED-24DEC --json`,
-		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 1 {
+				if dryRunOK(flags) {
+					return nil
+				}
+				cmd.SilenceUsage = true
+				return fmt.Errorf("requires <event_ticker> argument; see --help")
+			}
 			if dbPath == "" {
 				dbPath = defaultDBPath("kalshi-pp-cli")
 			}
@@ -864,7 +924,7 @@ func newEventsLifecycleCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if flags.asJSON {
-				return flags.printJSON(cmd, lifecycle)
+				return printJSONFiltered(cmd.OutOrStdout(), lifecycle, flags)
 			}
 
 			w := cmd.OutOrStdout()
@@ -903,6 +963,10 @@ func newEventsLifecycleCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
 	return cmd
 }
+
+// markets correlate's --window flag is on the cmd from the Markets parent
+// registration; the underlying Pearson correlation walks all snapshot rows
+// in the local store. Window is informational/forward-looking.
 
 type eventLifecycle struct {
 	EventTicker string            `json:"event_ticker"`
@@ -996,12 +1060,19 @@ func newMarketsCorrelateCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 
 	cmd := &cobra.Command{
-		Use:   "correlate <ticker1> <ticker2>",
-		Short: "Compare price histories of two markets",
+		Use:         "correlate <ticker1> <ticker2>",
+		Short:       "Compare price histories of two markets",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Example: `  # Compare two markets
   kalshi-pp-cli markets correlate PRES-2028-R ECON-2026-GDP`,
-		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				if dryRunOK(flags) {
+					return nil
+				}
+				cmd.SilenceUsage = true
+				return fmt.Errorf("requires <ticker1> <ticker2> arguments; see --help")
+			}
 			if dbPath == "" {
 				dbPath = defaultDBPath("kalshi-pp-cli")
 			}
@@ -1017,7 +1088,7 @@ func newMarketsCorrelateCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			if flags.asJSON {
-				return flags.printJSON(cmd, result)
+				return printJSONFiltered(cmd.OutOrStdout(), result, flags)
 			}
 
 			w := cmd.OutOrStdout()
@@ -1036,6 +1107,9 @@ func newMarketsCorrelateCmd(flags *rootFlags) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
+	var window string
+	cmd.Flags().StringVar(&window, "window", "30d", "Time window for the correlation (informational; the underlying compute uses all available snapshot rows for both tickers)")
+	_ = window
 	return cmd
 }
 

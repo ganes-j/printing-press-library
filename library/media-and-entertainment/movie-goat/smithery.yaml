@@ -1,8 +1,0 @@
-name: movie-goat-pp-mcp
-description: movie-goat-pp-cli API
-startCommand:
-    command: go run ./cmd/movie-goat-pp-mcp
-env:
-    TMDB_API_KEY:
-        description: movie-goat-pp-cli API credential
-        required: true

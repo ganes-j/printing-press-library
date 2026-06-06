@@ -1,4 +1,4 @@
-// Copyright 2026 matt-van-horn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 
 // waterfall: Clay-style multi-source enrichment. Tries free sources first
 // (LinkedIn + Happenstance), then Deepline with BYOK when configured, and
@@ -57,8 +57,9 @@ func newWaterfallCmd(flags *rootFlags) *cobra.Command {
 	var companyDomain string
 
 	cmd := &cobra.Command{
-		Use:   "waterfall <target>",
-		Short: "Clay-style waterfall enrichment: free sources first, Deepline with BYOK or managed",
+		Use:         "waterfall <target>",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Clay-style waterfall enrichment: free sources first, Deepline with BYOK or managed",
 		Long: `Enrich a person starting from the cheapest source and waterfalling into
 progressively more expensive ones.
 
@@ -114,7 +115,8 @@ Configure BYOK keys with:
 			// ultimately where the work gets done; without a path to it the
 			// whole waterfall can't satisfy the typical --enrich email,phone
 			// ask.
-			if err := preflightWaterfallDeepline(os.Getenv("DEEPLINE_API_KEY"), requireBYOK, byok); err != nil {
+			dlKey, _ := resolveDeeplineKey("")
+			if err := preflightWaterfallDeepline(dlKey, requireBYOK, byok); err != nil {
 				return err
 			}
 
@@ -376,7 +378,8 @@ func runDeeplineChain(ctx context.Context, flags *rootFlags, target string, fiel
 		return
 	}
 
-	client := deepline.NewClient(os.Getenv("DEEPLINE_API_KEY"))
+	dlKey, _ := resolveDeeplineKey("")
+	client := deepline.NewClient(dlKey)
 	if err := client.ValidateKey(); err != nil {
 		// One synthetic step surfaces the auth gate failure rather than
 		// emitting N copies (one per provider in the chain).

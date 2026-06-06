@@ -1,14 +1,41 @@
 ---
 name: pp-contact-goat
 description: "Super LinkedIn for the terminal. Search, enrich, and map warm-intro paths across LinkedIn (stickerdaniel/linkedin-mcp-server subprocess), Happenstance (cookie-first free quota with bearer-API fallback), and Deepline (paid enrichment). Two Happenstance auth surfaces coexist: Chrome cookie session (free monthly allocation) and HAPPENSTANCE_API_KEY bearer (paid credits, deeper schema). Use when the user asks who they know at a company, how to get a warm intro, who to prospect, or wants cross-source dossiers, network diffs, or waterfall enrichment."
+author: "Matt Van Horn"
+license: "Apache-2.0"
 argument-hint: "<command> [args] | install cli|mcp"
 allowed-tools: "Read Bash"
-metadata: '{"openclaw":{"requires":{"bins":["contact-goat-pp-cli"]},"install":[{"id":"go","kind":"shell","command":"go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli@latest","bins":["contact-goat-pp-cli"],"label":"Install via go install"}]}}'
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - contact-goat-pp-cli
+    install:
+      - kind: go
+        bins: [contact-goat-pp-cli]
+        module: github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli
 ---
 
 # Contact Goat - Printing Press CLI
 
-Super LinkedIn for the terminal. One CLI that fans out across three sources to answer "who do I know at X", "who can intro me to Y", and "who should I prospect for Z" - then enriches, dedupes, and ranks the answers without you stitching three tools together.
+## Prerequisites: Install the CLI
+
+This skill drives the `contact-goat-pp-cli` binary. **You must verify the CLI is installed before invoking any command from this skill.** If it is missing, install it first:
+
+1. Install via the Printing Press installer. It defaults binaries to `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows:
+   ```bash
+   npx -y @mvanhorn/printing-press-library install contact-goat --cli-only
+   ```
+2. Verify: `contact-goat-pp-cli --version`
+3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
+
+If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.3 or newer):
+
+```bash
+go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli@latest
+```
+
+If `--version` reports "command not found" after install, the runtime cannot see the binary directory on `$PATH`. Do not proceed with skill commands until verification succeeds.
 
 ## When to Use This CLI
 
@@ -44,43 +71,11 @@ Parse `$ARGUMENTS`:
 2. Starts with `install` and ends with `mcp` -> MCP installation (see below)
 3. Starts with `install` -> CLI installation (see below)
 4. Anything else -> Direct Use (map the request to the best command and run it)
-
-## CLI Installation
-
-1. Check Go is installed: `go version` (requires Go 1.23+).
-2. Install:
-   ```bash
-   go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli@latest
-   ```
-
-   If `@latest` installs a stale build (the Go module proxy cache can lag the repo by hours after a fresh merge), install from main directly:
-   ```bash
-   GOPRIVATE='github.com/mvanhorn/*' GOFLAGS=-mod=mod \
-     go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli@main
-   ```
-3. Verify: `contact-goat-pp-cli --version`.
-4. Ensure `$GOPATH/bin` (or `$HOME/go/bin`) is on `$PATH`.
-5. Auth setup - both Happenstance surfaces are optional; configure either or both:
-   ```bash
-   # Cookie surface (free monthly allocation, requires Chrome on macOS)
-   contact-goat-pp-cli auth login --chrome --service happenstance
-
-   # Bearer surface (paid credits, deeper schema, no browser required)
-   export HAPPENSTANCE_API_KEY="hpn_live_personal_..."
-   ```
-6. Verify: `contact-goat-pp-cli doctor` reports both surfaces' status side by side.
-
 ## MCP Server Installation
 
 1. Install the MCP server:
    ```bash
    go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-mcp@latest
-   ```
-
-   If `@latest` installs a stale build, install from main directly:
-   ```bash
-   GOPRIVATE='github.com/mvanhorn/*' GOFLAGS=-mod=mod \
-     go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-mcp@main
    ```
 2. Register with Claude Code:
    ```bash
@@ -120,11 +115,20 @@ These commands spend Deepline credits and REQUIRE `DEEPLINE_API_KEY` or a BYOK s
 - `deepline find-email` / `enrich-person` / `email-find` / `phone-find`
 - `deepline search-people` / `search-companies` / `enrich-company`
 
-Before invoking any of these, verify auth. If `DEEPLINE_API_KEY` is not set, ASK THE USER for it (or for a BYOK Hunter/Apollo key) before running the command. The CLI preflight now fails fast with a clear hint, but you can save the round-trip by checking first:
+Before invoking any of these, verify auth by running doctor first:
 
 ```bash
 contact-goat-pp-cli doctor --agent | grep -i deepline
 ```
+
+`deepline_env` shows the resolution source:
+
+- `set (env)` — `DEEPLINE_API_KEY` exported in the current shell
+- `set (flag)` — `--deepline-key` passed on the command line
+- `set (file:~/.local/deepline/<host>/.env)` — auto-discovered from the official Deepline CLI's persisted key (the user authenticated with `deepline auth register` or `deepline auth status`; no shell export needed)
+- `not set` — none of the above. Ask the user for a key, or for a BYOK Hunter/Apollo key
+
+The auto-discovery path means a user who has the Deepline CLI installed and authenticated does NOT need to re-export the key into their shell — contact-goat reads `~/.local/deepline/code-deepline-com/.env` directly (mode 0600, owned by the user). Don't ask the user to re-export when `set (file:...)` is reported. If `deepline_discovery_skipped` is also reported, those are candidate files the resolver rejected for a security reason (wrong mode, missing prefix); surface them so the user can fix the underlying issue.
 
 Provider chain by target kind (waterfall):
 
@@ -145,17 +149,18 @@ Notes:
 | Command | What it does |
 |---------|--------------|
 | `coverage <company>` | Who you know at a company across LinkedIn + Happenstance, ranked by relationship strength |
-| `hp people <query>` | Happenstance graph people-search (1st / 2nd / 3rd degree) |
+| `coverage --location <city>` | Who you know in a city. Bearer-only (cookie surface has no city-search); use `--source api`. |
+| `hp people <query>` | Happenstance graph people-search (1st / 2nd / 3rd degree). `--csv` emits flat CSV with semicolon-joined bridges. |
 | `prospect <query>` | Fan-out search across LinkedIn + Happenstance (+ opt-in Deepline), deduped |
 | `warm-intro <target>` | Mutual connections across sources who could intro you to a target |
 | `waterfall <target> [--company X]` | Free-sources-first enrichment, falls through to Deepline provider chain. Requires DEEPLINE_API_KEY or --byok. Bare-name targets need --company |
 | `dossier <target> [--enrich-email]` | Unified LinkedIn + Happenstance + (optional) Deepline dossier. --enrich-email requires DEEPLINE_API_KEY |
 | `deepline find-email "<name>" --company <domain>` | Single-call work-email lookup via dropleads_email_finder |
 | `deepline enrich-person <linkedin-url>` | Full person record via apollo_people_match (includes personal_emails[]) |
-| `api hpn search <text>` | Bearer-API search (costs 2 credits, async with poll) |
+| `api hpn search <text>` | Bearer-API search (costs 2 credits, async with poll). `--first-degree-only` keeps only 1st-degree matches; `--min-score N` drops weak signals (see docs/scoring.md); `--all --max-results N` auto-paginates. |
 | `api hpn research <description>` | Bearer-API deep dossier (costs 1 credit on completion) |
 | `api hpn usage` | Live credit balance, purchases, recent usage events (free) |
-| `doctor` | Check CLI health, both Happenstance surfaces, LinkedIn, and Deepline |
+| `doctor` | Check CLI health, both Happenstance surfaces, LinkedIn, and Deepline. Reports `happenstance_graph_status` (ok / stale / very_stale) on the LinkedIn upload age. |
 
 Run any command with `--help` for full flag documentation.
 

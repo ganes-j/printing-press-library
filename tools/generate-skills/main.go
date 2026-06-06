@@ -6,251 +6,147 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
-	"text/template"
 )
 
-// Registry schema
+const skillOutputDir = "cli-skills"
 
-type MCPBlock struct {
-	Binary          string   `json:"binary"`
-	Transport       string   `json:"transport"`
-	ToolCount       int      `json:"tool_count"`
-	PublicToolCount int      `json:"public_tool_count"`
-	AuthType        string   `json:"auth_type"`
-	EnvVars         []string `json:"env_vars"`
-	MCPReady        string   `json:"mcp_ready"`
+// generatedHeader is injected into each mirrored SKILL.md immediately after
+// the YAML frontmatter closes (or at the top of the file when there's no
+// frontmatter). Agents that open cli-skills/pp-*/SKILL.md to edit it see the
+// warning at the top of the body and the file path it should have edited.
+//
+// The header is intentionally a CommonMark HTML comment so renderers drop it.
+// It cannot live before the frontmatter — many skill loaders require the file
+// to start with `---` for frontmatter to be detected at all.
+const generatedHeaderFmt = "<!-- GENERATED FILE — DO NOT EDIT.\n" +
+	"     This file is a verbatim mirror of %s,\n" +
+	"     regenerated post-merge by tools/generate-skills/. Hand-edits here are\n" +
+	"     silently overwritten on the next regen. Edit the library/ source instead.\n" +
+	"     See the repository agent guide, section \"Generated artifacts: registry.json, cli-skills/\". -->\n"
+const generatedHeaderPrefix = "<!-- GENERATED FILE — DO NOT EDIT"
+
+type PrintManifest struct {
+	APIName string `json:"api_name"`
 }
 
-type RegistryEntry struct {
-	Name        string    `json:"name"`
-	Category    string    `json:"category"`
-	API         string    `json:"api"`
-	Description string    `json:"description"`
-	Path        string    `json:"path"`
-	MCP         *MCPBlock `json:"mcp,omitempty"`
-}
-
-type Registry struct {
-	SchemaVersion int             `json:"schema_version"`
-	Entries       []RegistryEntry `json:"entries"`
-}
-
-// Manifest schema (subset we care about)
-
-type Manifest struct {
-	CLIName string `json:"cli_name"`
-}
-
-// Domain command parsed from --help
-
-type DomainCommand struct {
-	Name        string
-	Description string
-}
-
-// Template context
-
-type SkillContext struct {
-	SkillName       string
-	APIName         string
-	Description     string
-	EnrichedDesc    string
-	CLIBinary       string
-	InstallPath     string
-	HasMCP          bool
-	MCPBinary       string
-	AuthType        string
-	EnvVars         []string
-	MCPReady        string
-	ToolCount       int
-	PublicToolCount int
-	DomainCommands  []DomainCommand
-	OpenClawMeta    string
-}
-
-// Framework commands to filter out of --help output
-var frameworkCommands = map[string]bool{
-	"api":        true,
-	"auth":       true,
-	"completion": true,
-	"doctor":     true,
-	"export":     true,
-	"help":       true,
-	"import":     true,
-	"load":       true,
-	"orphans":    true,
-	"sql":        true,
-	"stale":      true,
-	"sync":       true,
-	"version":    true,
-	"workflow":   true,
+type LibrarySkill struct {
+	Name string
+	Path string
 }
 
 func main() {
-	// Read registry.json from current working directory (repo root)
-	registryPath := "registry.json"
-	registryData, err := os.ReadFile(registryPath)
+	librarySkills, err := discoverLibrarySkills("library")
 	if err != nil {
-		log.Fatalf("Error reading %s: %v\nRun this program from the repo root.", registryPath, err)
+		log.Fatal(err)
 	}
 
-	var registry Registry
-	if err := json.Unmarshal(registryData, &registry); err != nil {
-		log.Fatalf("Error parsing %s: %v", registryPath, err)
-	}
+	// Track every skill name the library asks for so we can prune
+	// pp-<oldslug>/ directories left behind by renames or removals. Filled
+	// at the top of the loop (before any error paths) so a transient write
+	// failure for an entry doesn't make us delete its existing skill.
+	expectedSkills := make(map[string]struct{}, len(librarySkills))
 
-	// Load templates
-	templatePath := "tools/generate-skills/skill-template.md"
-	tmpl, err := template.ParseFiles(templatePath)
-	if err != nil {
-		log.Fatalf("Error loading template %s: %v", templatePath, err)
-	}
+	var (
+		copiedCount int
+		missing     []string
+		writeErrors []string
+	)
 
-	// Snapshot existing pp-* skill dirs before generation
-	beforeDirs := existingSkillDirs()
+	for _, entry := range librarySkills {
+		skillName := "pp-" + entry.Name
+		expectedSkills[skillName] = struct{}{}
 
-	var totalGenerated, enrichedCount, registryOnlyCount, skippedCount, upstreamCount int
-
-	for _, entry := range registry.Entries {
-		// Derive skill name: strip -pp-cli suffix, prepend pp-
-		baseName := entry.Name
-		baseName = strings.TrimSuffix(baseName, "-pp-cli")
-		skillName := "pp-" + baseName
-
-		// Resolve CLI binary name via layered precedence
-		cliBinary := resolveCLIBinary(entry)
-
-		// Resolve MCP/auth metadata from registry
-		hasMCP := entry.MCP != nil
-		var mcpBinary, authType, mcpReady string
-		var envVars []string
-		var toolCount, publicToolCount int
-
-		if hasMCP {
-			mcpBinary = entry.MCP.Binary
-			authType = entry.MCP.AuthType
-			envVars = entry.MCP.EnvVars
-			mcpReady = entry.MCP.MCPReady
-			toolCount = entry.MCP.ToolCount
-			publicToolCount = entry.MCP.PublicToolCount
-		}
-		if authType == "" {
-			authType = "none"
-		}
-		if envVars == nil {
-			envVars = []string{}
-		}
-
-		// Try to get domain commands from --help
-		domainCommands := parseDomainCommands(cliBinary)
-
-		// Build enriched description
-		enrichedDesc := buildEnrichedDescription(entry, domainCommands)
-
-		isEnriched := domainCommands != nil
-
-		ctx := SkillContext{
-			SkillName:       skillName,
-			APIName:         entry.API,
-			Description:     entry.Description,
-			EnrichedDesc:    enrichedDesc,
-			CLIBinary:       cliBinary,
-			InstallPath:     entry.Path,
-			HasMCP:          hasMCP,
-			MCPBinary:       mcpBinary,
-			AuthType:        authType,
-			EnvVars:         envVars,
-			MCPReady:        mcpReady,
-			ToolCount:       toolCount,
-			PublicToolCount: publicToolCount,
-			DomainCommands:  domainCommands,
-		}
-		ctx.OpenClawMeta = buildOpenClawMetadata(ctx)
-
-		// Write skill file
-		skillDir := filepath.Join("skills", skillName)
+		skillDir := filepath.Join(skillOutputDir, skillName)
 		skillFile := filepath.Join(skillDir, "SKILL.md")
 
-		// Upstream wins: if the printed CLI ships its own SKILL.md, copy it
-		// verbatim. The generator has research context (novel features,
-		// narrative, trigger phrases) that this tool can't reconstruct, so
-		// upstream is strictly better than enriched or registry-only synthesis.
 		copied, err := copyUpstreamSkill(entry.Path, skillDir, skillFile)
 		if err != nil {
-			log.Printf("Warning: could not copy upstream SKILL.md for %s: %v", entry.Name, err)
+			writeErrors = append(writeErrors, fmt.Sprintf("%s: %v", entry.Name, err))
 			continue
 		}
-		if copied {
-			totalGenerated++
-			upstreamCount++
-			fmt.Printf("  %s -> %s (upstream)\n", entry.Name, skillFile)
+		if !copied {
+			missing = append(missing, fmt.Sprintf("%s (expected %s/SKILL.md)", entry.Name, entry.Path))
 			continue
 		}
+		copiedCount++
+		fmt.Printf("  %s -> %s\n", entry.Name, skillFile)
+	}
 
-		// Downgrade protection: don't overwrite an enriched skill with a registry-only one.
-		// This prevents CI (where CLIs aren't installed) from replacing locally-enriched skills.
-		if !isEnriched {
-			if existing, err := os.ReadFile(skillFile); err == nil {
-				if strings.Contains(string(existing), "Key commands:") {
-					fmt.Printf("  %s -> %s (skipped: existing skill is enriched, new would be registry-only)\n", entry.Name, skillFile)
-					totalGenerated++
-					skippedCount++
-					continue
-				}
-			}
-		}
+	prunedCount := pruneOrphanSkills(skillOutputDir, expectedSkills)
 
-		if err := os.MkdirAll(skillDir, 0755); err != nil {
-			log.Printf("Warning: could not create directory %s: %v", skillDir, err)
-			continue
-		}
+	fmt.Printf("\nMirrored %d skill(s) from library/ to %s/\n", copiedCount, skillOutputDir)
+	if prunedCount > 0 {
+		fmt.Printf("Pruned %d orphan skill dir(s) with no library manifest.\n", prunedCount)
+	}
 
-		f, err := os.Create(skillFile)
+	if len(writeErrors) > 0 {
+		log.Printf("Write errors:\n  %s", strings.Join(writeErrors, "\n  "))
+	}
+
+	if len(missing) > 0 {
+		log.Fatalf(
+			"Missing or empty library SKILL.md for %d entr(y/ies):\n  %s\n"+
+				"Every CLI must ship a library SKILL.md (see AGENTS.md \"SKILL.md coverage\"). "+
+				"Generator behavior belongs in cli-printing-press; this catalog only mirrors it.",
+			len(missing),
+			strings.Join(missing, "\n  "),
+		)
+	}
+
+	if len(writeErrors) > 0 {
+		os.Exit(1)
+	}
+}
+
+func discoverLibrarySkills(libraryRoot string) ([]LibrarySkill, error) {
+	manifestPaths, err := filepath.Glob(filepath.Join(libraryRoot, "*", "*", ".printing-press.json"))
+	if err != nil {
+		return nil, fmt.Errorf("discover library manifests: %w", err)
+	}
+	if len(manifestPaths) == 0 {
+		return nil, fmt.Errorf("no .printing-press.json files found under %s/*/*; run this program from the repo root", libraryRoot)
+	}
+
+	skills := make([]LibrarySkill, 0, len(manifestPaths))
+	for _, manifestPath := range manifestPaths {
+		data, err := os.ReadFile(manifestPath)
 		if err != nil {
-			log.Printf("Warning: could not create %s: %v", skillFile, err)
-			continue
+			return nil, fmt.Errorf("read %s: %w", manifestPath, err)
 		}
-
-		if err := tmpl.Execute(f, ctx); err != nil {
-			f.Close()
-			log.Printf("Warning: could not render template for %s: %v", skillName, err)
-			continue
+		var manifest PrintManifest
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", manifestPath, err)
 		}
-		f.Close()
-
-		totalGenerated++
-		status := "registry-only"
-		if isEnriched {
-			status = "enriched"
-			enrichedCount++
-		} else {
-			registryOnlyCount++
+		apiName := strings.TrimSpace(manifest.APIName)
+		if apiName == "" {
+			return nil, fmt.Errorf("%s is missing api_name", manifestPath)
 		}
-		fmt.Printf("  %s -> %s (%s)\n", entry.Name, skillFile, status)
+		skills = append(skills, LibrarySkill{
+			Name: apiName,
+			Path: filepath.ToSlash(filepath.Dir(manifestPath)),
+		})
 	}
 
-	summary := fmt.Sprintf("\nGenerated %d skills (%d upstream, %d enriched, %d registry-only", totalGenerated, upstreamCount, enrichedCount, registryOnlyCount)
-	if skippedCount > 0 {
-		summary += fmt.Sprintf(", %d skipped to preserve enrichment", skippedCount)
-	}
-	summary += ")\n"
-	fmt.Print(summary)
-
-	// Bump plugin.json version if skill set changed
-	afterDirs := existingSkillDirs()
-	maybeUpdatePluginVersion(beforeDirs, afterDirs)
+	sort.Slice(skills, func(i, j int) bool {
+		if skills[i].Name == skills[j].Name {
+			return skills[i].Path < skills[j].Path
+		}
+		return skills[i].Name < skills[j].Name
+	})
+	return skills, nil
 }
 
 // copyUpstreamSkill copies <entryPath>/SKILL.md to skillFile if it exists and
 // is non-empty. Returns (true, nil) on successful copy, (false, nil) when
-// upstream is missing or empty (so the caller can fall through to synthesis),
+// upstream is missing or empty/whitespace-only (caller reports it as missing),
 // (false, err) on other filesystem errors.
+//
+// An empty/whitespace-only upstream almost always signals a generator bug
+// (failed write mid-pipeline); treat it as missing so the caller fails loudly
+// rather than mirroring a blank SKILL.md.
 func copyUpstreamSkill(entryPath, skillDir, skillFile string) (bool, error) {
 	upstreamPath := filepath.Join(entryPath, "SKILL.md")
 	data, err := os.ReadFile(upstreamPath)
@@ -260,357 +156,106 @@ func copyUpstreamSkill(entryPath, skillDir, skillFile string) (bool, error) {
 		}
 		return false, fmt.Errorf("read %s: %w", upstreamPath, err)
 	}
-	// Empty or whitespace-only upstream almost always signals a generator bug
-	// (failed write mid-pipeline). Prefer thin synthesis over shipping a blank
-	// SKILL.md. Log loudly so the upstream regression is visible.
-	if len(strings.TrimSpace(string(data))) == 0 {
-		log.Printf("Warning: upstream SKILL.md at %s is empty; falling through to synthesis", upstreamPath)
+	if len(bytes.TrimSpace(data)) == 0 {
 		return false, nil
 	}
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		return false, fmt.Errorf("mkdir %s: %w", skillDir, err)
 	}
-	augmented := injectStaleBuildFallback(data)
-	if err := os.WriteFile(skillFile, augmented, 0644); err != nil {
+	if err := os.WriteFile(skillFile, injectGeneratedHeader(data, filepath.ToSlash(upstreamPath)), 0644); err != nil {
 		return false, fmt.Errorf("write %s: %w", skillFile, err)
 	}
 	return true, nil
 }
 
-// injectStaleBuildFallback adds a short "if @latest is stale, install
-// from @main" code block right after every `go install ...@latest` line
-// that targets a printing-press-library cmd. Upstream (hand-authored)
-// SKILL.md files bypass the template, so they need this augmentation at
-// copy time to match what template-generated skills already ship.
+// injectGeneratedHeader inserts the DO-NOT-EDIT warning into a SKILL.md byte
+// stream. When the file has YAML frontmatter (a leading `---` line followed
+// by a closing `---` line), the header is placed immediately after the
+// closing fence so frontmatter parsers continue to work. Otherwise the header
+// is prepended.
 //
-// Idempotent: if the file already contains `@main` (either from a
-// prior run of this generator or hand-added guidance), we make no
-// changes and return the original bytes unchanged.
-func injectStaleBuildFallback(data []byte) []byte {
-	if bytes.Contains(data, []byte("@main")) {
+// Idempotent: if the file already starts with the generated header (e.g. a
+// library SKILL.md authored from a previous mirror, or a re-run on an
+// already-injected file), the function returns the input unchanged.
+func injectGeneratedHeader(data []byte, sourcePath string) []byte {
+	bodyOffset := frontmatterEnd(data)
+	generatedHeader := fmt.Sprintf(generatedHeaderFmt, sourcePath)
+	if bytes.HasPrefix(data[bodyOffset:], []byte(generatedHeaderPrefix)) {
 		return data
 	}
-	// Pattern: a line ending in `cmd/<binary>@latest` that is NOT inside
-	// the metadata JSON (metadata is always on line 6 of the frontmatter
-	// and uses a different quoting shape — we filter by the leading whitespace
-	// plus the `go install` prefix, which metadata does not have).
-	goInstallRE := regexp.MustCompile(
-		`(?m)^(\s*)(go install github\.com/mvanhorn/printing-press-library/library/[^\s@]+@latest)\s*$`)
-	fallbackBlock := func(indent, installCmd string) string {
-		mainCmd := strings.Replace(installCmd, "@latest", "@main", 1)
-		return fmt.Sprintf(
-			"%s%s\n%s\n%s# If `@latest` installs a stale build (Go module proxy cache lag), install from main:\n%sGOPRIVATE='github.com/mvanhorn/*' GOFLAGS=-mod=mod \\\n%s  %s",
-			indent, installCmd, indent, indent, indent, indent, mainCmd)
+	out := make([]byte, 0, len(data)+len(generatedHeader)+1)
+	out = append(out, data[:bodyOffset]...)
+	if bodyOffset > 0 && (bodyOffset == len(data) || data[bodyOffset] != '\n') {
+		out = append(out, '\n')
 	}
-	return goInstallRE.ReplaceAllFunc(data, func(match []byte) []byte {
-		sub := goInstallRE.FindSubmatch(match)
-		if len(sub) < 3 {
-			return match
+	out = append(out, generatedHeader...)
+	out = append(out, data[bodyOffset:]...)
+	return out
+}
+
+// frontmatterEnd returns the byte offset just past the closing `---` of YAML
+// frontmatter, including its trailing newline. Returns 0 when the file has
+// no frontmatter (i.e., doesn't start with `---\n` on its own line). The
+// header should be injected at that offset.
+func frontmatterEnd(data []byte) int {
+	const fence = "---"
+	if !bytes.HasPrefix(data, []byte(fence+"\n")) && !bytes.HasPrefix(data, []byte(fence+"\r\n")) {
+		return 0
+	}
+	// Skip the opening fence line and look for the closing fence at the
+	// start of a subsequent line. Match either Unix or Windows line endings.
+	start := bytes.IndexByte(data, '\n') + 1
+	for i := start; i < len(data); {
+		lineEnd := bytes.IndexByte(data[i:], '\n')
+		if lineEnd < 0 {
+			return 0
 		}
-		indent := string(sub[1])
-		installCmd := string(sub[2])
-		return []byte(fallbackBlock(indent, installCmd))
-	})
+		line := bytes.TrimRight(data[i:i+lineEnd], "\r")
+		if bytes.Equal(line, []byte(fence)) {
+			return i + lineEnd + 1
+		}
+		i += lineEnd + 1
+	}
+	return 0
 }
 
-// resolveCLIBinary resolves the CLI binary name using layered precedence:
-// 1. Read .printing-press.json manifest -> validate cmd/<cli_name>/ dir exists
-// 2. If dir missing, try bare registry name
-// 3. Registry heuristic (append -pp-cli) as last resort
-func resolveCLIBinary(entry RegistryEntry) string {
-	manifestPath := filepath.Join(entry.Path, ".printing-press.json")
-
-	manifestData, err := os.ReadFile(manifestPath)
+// pruneOrphanSkills removes cli-skills/pp-<slug>/ directories whose pp-<slug>
+// is not in the expected set (i.e., the library has no corresponding manifest).
+// Without this, renaming a CLI's slug leaves the old mirror behind: the
+// library drops the old manifest, the main loop above only writes the
+// new entry, and `git add cli-skills/` in CI sees no working-tree change for
+// the orphan dir. See issue #250 for the flightgoat -> flight-goat case.
+//
+// Scoped to pp-* directories only so unrelated content under dir is preserved
+// if anyone adds it later. dir is parameterized for testability.
+func pruneOrphanSkills(dir string, expected map[string]struct{}) int {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		// No manifest — use registry heuristic
-		log.Printf("Warning: no manifest at %s, using heuristic for %s", manifestPath, entry.Name)
-		return registryHeuristic(entry.Name)
+		if os.IsNotExist(err) {
+			return 0
+		}
+		log.Printf("Warning: could not read %s for orphan prune: %v", dir, err)
+		return 0
 	}
-
-	var manifest Manifest
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		log.Printf("Warning: could not parse manifest at %s: %v", manifestPath, err)
-		return registryHeuristic(entry.Name)
-	}
-
-	if manifest.CLIName == "" {
-		log.Printf("Warning: manifest at %s has no cli_name, using heuristic", manifestPath)
-		return registryHeuristic(entry.Name)
-	}
-
-	// Validate that cmd/<cli_name>/ directory exists in source tree
-	cmdDir := filepath.Join(entry.Path, "cmd", manifest.CLIName)
-	if info, err := os.Stat(cmdDir); err == nil && info.IsDir() {
-		return manifest.CLIName
-	}
-
-	// cmd/<cli_name>/ doesn't exist — try bare registry name
-	bareName := strings.TrimSuffix(entry.Name, "-pp-cli")
-	bareCmdDir := filepath.Join(entry.Path, "cmd", bareName)
-	if info, err := os.Stat(bareCmdDir); err == nil && info.IsDir() {
-		log.Printf("Info: manifest cli_name %q has no cmd/ dir, using bare name %q for %s", manifest.CLIName, bareName, entry.Name)
-		return bareName
-	}
-
-	// Fall back to manifest cli_name even though dir doesn't exist
-	// (maybe the directory structure doesn't match expectations)
-	log.Printf("Warning: no cmd/ dir found for %s (tried %q and %q), using manifest cli_name %q", entry.Name, manifest.CLIName, bareName, manifest.CLIName)
-	return manifest.CLIName
-}
-
-// registryHeuristic derives the CLI binary name from the registry name.
-// If the name already ends in -pp-cli, use as-is; otherwise append -pp-cli.
-func registryHeuristic(name string) string {
-	if strings.HasSuffix(name, "-pp-cli") {
-		return name
-	}
-	return name + "-pp-cli"
-}
-
-// parseDomainCommands runs <binary> --help and parses the "Available Commands:" section.
-// Returns nil if the binary is not found or --help fails.
-func parseDomainCommands(binary string) []DomainCommand {
-	cmd := exec.Command(binary, "--help")
-	output, err := cmd.Output()
-	if err != nil {
-		log.Printf("Info: could not run %s --help (binary may not be installed): %v", binary, err)
-		return nil
-	}
-
-	return parseHelpOutput(string(output))
-}
-
-// parseHelpOutput extracts domain commands from --help output.
-func parseHelpOutput(output string) []DomainCommand {
-	lines := strings.Split(output, "\n")
-	inAvailableCommands := false
-	var commands []DomainCommand
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Detect the "Available Commands:" section
-		if trimmed == "Available Commands:" {
-			inAvailableCommands = true
+	var removed int
+	for _, e := range entries {
+		if !e.IsDir() {
 			continue
 		}
-
-		// End of section: blank line or new section header (non-indented, ends with ":")
-		if inAvailableCommands {
-			if trimmed == "" {
-				// Blank line could mean end of section or separator within
-				// Keep going — Cobra sometimes has blank lines in the section
-				continue
-			}
-			// If line doesn't start with spaces, we've left the section
-			if len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
-				break
-			}
-
-			// Parse command line: "  <command>  <description>"
-			parts := strings.Fields(trimmed)
-			if len(parts) < 1 {
-				continue
-			}
-
-			cmdName := parts[0]
-
-			// Filter out framework commands
-			if frameworkCommands[cmdName] {
-				continue
-			}
-
-			// Reconstruct description from remaining fields
-			desc := ""
-			if len(parts) > 1 {
-				desc = strings.Join(parts[1:], " ")
-			}
-
-			commands = append(commands, DomainCommand{
-				Name:        cmdName,
-				Description: desc,
-			})
+		name := e.Name()
+		if !strings.HasPrefix(name, "pp-") {
+			continue
 		}
-	}
-
-	if len(commands) == 0 {
-		return nil
-	}
-	return commands
-}
-
-// buildEnrichedDescription creates a rich, composition-friendly description
-// for the skill frontmatter.
-func buildEnrichedDescription(entry RegistryEntry, domainCommands []DomainCommand) string {
-	// Start with the Printing Press CLI identification and registry description
-	desc := fmt.Sprintf("Printing Press CLI for %s. %s", entry.API, entry.Description)
-
-	// Add domain command keywords if available
-	if len(domainCommands) > 0 {
-		var cmdNames []string
-		for _, cmd := range domainCommands {
-			cmdNames = append(cmdNames, cmd.Name)
+		if _, ok := expected[name]; ok {
+			continue
 		}
-		desc += " Capabilities include: " + strings.Join(cmdNames, ", ") + "."
-	}
-
-	// Add trigger phrases for discoverability
-	bareName := strings.TrimSuffix(entry.Name, "-pp-cli")
-	triggerPhrases := fmt.Sprintf(
-		" Trigger phrases: 'install %s', 'use %s', 'run %s', '%s commands', 'setup %s'.",
-		bareName, bareName, bareName, entry.API, bareName,
-	)
-	desc += triggerPhrases
-
-	// Escape any double quotes in the description (for YAML frontmatter)
-	desc = strings.ReplaceAll(desc, `"`, `\"`)
-
-	return desc
-}
-
-// existingSkillDirs returns the sorted set of pp-* directory names under skills/.
-func existingSkillDirs() []string {
-	entries, err := os.ReadDir("skills")
-	if err != nil {
-		return nil
-	}
-	var dirs []string
-	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), "pp-") {
-			dirs = append(dirs, e.Name())
+		target := filepath.Join(dir, name)
+		if err := os.RemoveAll(target); err != nil {
+			log.Printf("Warning: could not remove orphan %s: %v", target, err)
+			continue
 		}
+		fmt.Printf("  removed orphan %s (no library manifest)\n", target)
+		removed++
 	}
-	sort.Strings(dirs)
-	return dirs
-}
-
-// bumpPatchVersion increments the patch component of a semver string.
-// "1.1.0" -> "1.1.1", "1.2.3" -> "1.2.4"
-func bumpPatchVersion(version string) (string, error) {
-	parts := strings.Split(version, ".")
-	if len(parts) != 3 {
-		return "", fmt.Errorf("invalid semver: %s", version)
-	}
-	patch, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return "", fmt.Errorf("invalid patch version: %s", parts[2])
-	}
-	parts[2] = strconv.Itoa(patch + 1)
-	return strings.Join(parts, "."), nil
-}
-
-// maybeUpdatePluginVersion bumps the plugin.json patch version if the set of
-// pp-* skill directories changed. Uses string replacement to preserve field order.
-func maybeUpdatePluginVersion(beforeDirs, afterDirs []string) {
-	if slicesEqual(beforeDirs, afterDirs) {
-		return
-	}
-
-	pluginPath := filepath.Join(".claude-plugin", "plugin.json")
-	data, err := os.ReadFile(pluginPath)
-	if err != nil {
-		log.Printf("Warning: could not read %s for version bump: %v", pluginPath, err)
-		return
-	}
-
-	// Extract current version from JSON
-	var parsed struct {
-		Version string `json:"version"`
-	}
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		log.Printf("Warning: could not parse %s: %v", pluginPath, err)
-		return
-	}
-
-	newVersion, err := bumpPatchVersion(parsed.Version)
-	if err != nil {
-		log.Printf("Warning: could not bump version %q: %v", parsed.Version, err)
-		return
-	}
-
-	// Replace version in-place to preserve field order and formatting
-	content := string(data)
-	old := fmt.Sprintf(`"version": "%s"`, parsed.Version)
-	updated := fmt.Sprintf(`"version": "%s"`, newVersion)
-	content = strings.Replace(content, old, updated, 1)
-
-	if err := os.WriteFile(pluginPath, []byte(content), 0644); err != nil {
-		log.Printf("Warning: could not write %s: %v", pluginPath, err)
-		return
-	}
-
-	fmt.Printf("Bumped plugin version: %s -> %s\n", parsed.Version, newVersion)
-}
-
-// buildOpenClawMetadata constructs the single-line JSON for the metadata frontmatter field.
-// This gives OpenClaw dependency gating, auto-install, and API key prompting.
-func buildOpenClawMetadata(ctx SkillContext) string {
-	type installBlock struct {
-		ID      string   `json:"id"`
-		Kind    string   `json:"kind"`
-		Command string   `json:"command"`
-		Bins    []string `json:"bins"`
-		Label   string   `json:"label"`
-	}
-
-	type requires struct {
-		Bins []string `json:"bins"`
-		Env  []string `json:"env,omitempty"`
-	}
-
-	type openclawBlock struct {
-		Requires   requires       `json:"requires"`
-		PrimaryEnv string         `json:"primaryEnv,omitempty"`
-		Install    []installBlock `json:"install"`
-	}
-
-	type metadataWrapper struct {
-		OpenClaw openclawBlock `json:"openclaw"`
-	}
-
-	goInstallCmd := fmt.Sprintf("go install github.com/mvanhorn/printing-press-library/%s/cmd/%s@latest", ctx.InstallPath, ctx.CLIBinary)
-
-	req := requires{
-		Bins: []string{ctx.CLIBinary},
-	}
-	if len(ctx.EnvVars) > 0 && ctx.AuthType == "api_key" {
-		req.Env = ctx.EnvVars
-	}
-
-	oc := openclawBlock{
-		Requires: req,
-		Install: []installBlock{
-			{
-				ID:      "go",
-				Kind:    "shell",
-				Command: goInstallCmd,
-				Bins:    []string{ctx.CLIBinary},
-				Label:   "Install via go install",
-			},
-		},
-	}
-
-	if len(ctx.EnvVars) > 0 && ctx.AuthType == "api_key" {
-		oc.PrimaryEnv = ctx.EnvVars[0]
-	}
-
-	wrapper := metadataWrapper{OpenClaw: oc}
-	data, err := json.Marshal(wrapper)
-	if err != nil {
-		log.Printf("Warning: could not marshal OpenClaw metadata for %s: %v", ctx.SkillName, err)
-		return ""
-	}
-	return string(data)
-}
-
-func slicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	return removed
 }

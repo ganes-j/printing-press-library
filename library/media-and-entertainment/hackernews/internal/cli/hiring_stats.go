@@ -7,257 +7,204 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mvanhorn/printing-press-library/library/media-and-entertainment/hackernews/internal/algolia"
 	"github.com/spf13/cobra"
 )
 
+// hiring-stats fetches the latest N "Who is hiring?" threads, walks
+// every top-level post, and aggregates language mentions, remote
+// percentage, and top-mentioned company names.
+//
+// We deliberately use simple keyword-counting heuristics rather than
+// LLM extraction — the goal is a deterministic, reproducible structured
+// output, not a polished prose summary.
+
+type hiringStats struct {
+	Months         int            `json:"months_scanned"`
+	ThreadsScanned int            `json:"threads_scanned"`
+	PostsScanned   int            `json:"posts_scanned"`
+	Languages      map[string]int `json:"languages"`
+	RemotePercent  float64        `json:"remote_percent"`
+	OnSitePercent  float64        `json:"onsite_percent"`
+	TopCompanies   []companyHit   `json:"top_companies"`
+	HasH1B         int            `json:"posts_offering_visa_or_h1b"`
+}
+
+type companyHit struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+var languageKeywords = []string{
+	"Go", "Golang", "Rust", "Python", "TypeScript", "JavaScript",
+	"Ruby", "Elixir", "Java", "Kotlin", "Swift", "Scala", "Clojure",
+	"Haskell", "OCaml", "C++", "C#", "Erlang", "PHP", "Zig",
+}
+
+var companyRE = regexp.MustCompile(`(?m)^([A-Z][A-Za-z0-9&\.\- ]{2,30})\s*\|`) // catches "Acme Corp | Engineer | ..." style headers
+var visaRE = regexp.MustCompile(`(?i)(VISA|H[\-]?1B|sponsorship)`)
+
 func newHiringStatsCmd(flags *rootFlags) *cobra.Command {
-	var flagMonths int
-	var flagCompare bool
-
+	var months int
 	cmd := &cobra.Command{
-		Use:   "hiring-stats",
-		Short: "Aggregate hiring data across Who's Hiring threads",
-		Long: `Analyze tech trends, remote work, and salary mentions across
-recent Who is Hiring threads on Hacker News.`,
-		Example: `  # Stats for last 3 months (default)
-  hackernews-pp-cli hiring-stats
+		Use:         "stats",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Aggregate Who's Hiring threads across N months — top languages, remote ratio, top companies",
+		Long: `Walk the most recent N 'Who is hiring?' threads on HN and compute aggregate stats.
 
-  # Stats for last 6 months with comparison
-  hackernews-pp-cli hiring-stats --months 6 --compare
-
-  # JSON output
-  hackernews-pp-cli hiring-stats --json`,
+Heuristics: we look for whole-word language names, count posts mentioning
+'remote' (or 'on-site'), and try to extract the company name from the
+common '| Engineer | …' header format hiring posts use. This is
+a best-effort summary, not a hiring-data product.`,
+		Example: strings.Trim(`
+  hackernews-pp-cli hiring stats --months 1
+  hackernews-pp-cli hiring stats --months 6 --json
+`, "\n"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Find recent hiring threads
-			params := map[string]string{
-				"query":       "\"who is hiring\"",
-				"tags":        "story,author_whoishiring",
-				"hitsPerPage": fmt.Sprintf("%d", flagMonths),
+			if dryRunOK(flags) {
+				return nil
 			}
-
-			data, err := algoliaGet("/search_by_date", params)
+			if months <= 0 {
+				months = 1
+			}
+			if months > 12 {
+				months = 12
+			}
+			ac := algolia.New(flags.timeout)
+			resp, err := ac.Search("", algolia.SearchOpts{
+				Tags:        "story,author_whoishiring",
+				ByDate:      true,
+				HitsPerPage: 30,
+			})
 			if err != nil {
-				return apiErr(fmt.Errorf("searching for hiring threads: %w", err))
+				return apiErr(err)
 			}
-
-			threads, err := algoliaHits(data)
-			if err != nil || len(threads) == 0 {
-				return apiErr(fmt.Errorf("no Who is Hiring threads found"))
-			}
-
-			fmt.Fprintf(cmd.ErrOrStderr(), "Found %d hiring threads, analyzing...\n", len(threads))
-
-			type monthData struct {
-				title  string
-				techs  map[string]int
-				remote int
-				salary int
-				total  int
-			}
-
-			techPatterns := map[string]*regexp.Regexp{
-				"Python":     regexp.MustCompile(`(?i)\bpython\b`),
-				"JavaScript": regexp.MustCompile(`(?i)\b(javascript|js)\b`),
-				"TypeScript": regexp.MustCompile(`(?i)\btypescript\b`),
-				"Go":         regexp.MustCompile(`(?i)\b(golang|\bgo\b)`),
-				"Rust":       regexp.MustCompile(`(?i)\brust\b`),
-				"Java":       regexp.MustCompile(`(?i)\bjava\b`),
-				"C++":        regexp.MustCompile(`(?i)\bc\+\+\b`),
-				"Ruby":       regexp.MustCompile(`(?i)\bruby\b`),
-				"Swift":      regexp.MustCompile(`(?i)\bswift\b`),
-				"Kotlin":     regexp.MustCompile(`(?i)\bkotlin\b`),
-				"React":      regexp.MustCompile(`(?i)\breact\b`),
-				"Node.js":    regexp.MustCompile(`(?i)\bnode\.?js\b`),
-				"Docker":     regexp.MustCompile(`(?i)\bdocker\b`),
-				"K8s":        regexp.MustCompile(`(?i)\b(kubernetes|k8s)\b`),
-				"AWS":        regexp.MustCompile(`(?i)\baws\b`),
-				"PostgreSQL": regexp.MustCompile(`(?i)\b(postgres|postgresql)\b`),
-				"Redis":      regexp.MustCompile(`(?i)\bredis\b`),
-				"GraphQL":    regexp.MustCompile(`(?i)\bgraphql\b`),
-			}
-			remoteRe := regexp.MustCompile(`(?i)\b(remote|fully.remote|remote.first)\b`)
-			salaryRe := regexp.MustCompile(`(?i)(\$\d|k/yr|\d+k\s*[-–]\s*\d+k|salary|compensation|total.comp|TC\s|OTE\b)`)
-
-			var months []monthData
-
-			for _, thread := range threads {
-				threadID := getInt(thread, "objectID")
-				if threadID == 0 {
-					if s := getString(thread, "objectID"); s != "" {
-						fmt.Sscanf(s, "%d", &threadID)
+			// Pick threads whose title starts with "Ask HN: Who is hiring".
+			threads := []algolia.SearchHit{}
+			for _, h := range resp.Hits {
+				if strings.HasPrefix(strings.ToLower(h.Title), "ask hn: who is hiring") {
+					threads = append(threads, h)
+					if len(threads) >= months {
+						break
 					}
 				}
-				if threadID == 0 {
-					continue
-				}
+			}
+			if len(threads) == 0 {
+				return apiErr(fmt.Errorf("no whoishiring threads found"))
+			}
 
-				title := getString(thread, "title")
-				fmt.Fprintf(cmd.ErrOrStderr(), "  Analyzing: %s\n", title)
+			out := hiringStats{
+				Months:    months,
+				Languages: map[string]int{},
+			}
+			companyCounts := map[string]int{}
+			remote := 0
+			onsite := 0
 
-				item, err := fetchFirebaseItem(flags, threadID)
+			for _, t := range threads {
+				out.ThreadsScanned++
+				node, err := ac.Item(t.ObjectID)
 				if err != nil {
 					continue
 				}
-
-				kidIDs := getIntSlice(item, "kids")
-				fetchLimit := len(kidIDs)
-				if fetchLimit > 500 {
-					fetchLimit = 500
-				}
-				if fetchLimit == 0 {
-					continue
-				}
-
-				comments, err := fetchFirebaseItems(flags, kidIDs[:fetchLimit], fetchLimit)
-				if err != nil {
-					continue
-				}
-
-				md := monthData{
-					title: title,
-					techs: make(map[string]int),
-				}
-
-				for _, c := range comments {
-					text := getString(c, "text")
-					if text == "" {
-						continue
-					}
-					md.total++
-
-					for tech, re := range techPatterns {
-						if re.MatchString(text) {
-							md.techs[tech]++
+				for _, c := range node.Children {
+					out.PostsScanned++
+					text := stripHTML(c.Text)
+					lower := strings.ToLower(text)
+					for _, lang := range languageKeywords {
+						if mentionsWord(lower, strings.ToLower(lang)) {
+							out.Languages[lang]++
 						}
 					}
-					if remoteRe.MatchString(text) {
-						md.remote++
+					if strings.Contains(lower, "remote") {
+						remote++
 					}
-					if salaryRe.MatchString(text) {
-						md.salary++
+					if strings.Contains(lower, "on-site") || strings.Contains(lower, "onsite") || strings.Contains(lower, "in office") {
+						onsite++
+					}
+					if visaRE.MatchString(text) {
+						out.HasH1B++
+					}
+					if m := companyRE.FindStringSubmatch(text); len(m) == 2 {
+						company := strings.TrimSpace(m[1])
+						if company != "" {
+							companyCounts[company]++
+						}
 					}
 				}
-
-				months = append(months, md)
 			}
 
-			if len(months) == 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "No data collected\n")
-				return nil
+			if out.PostsScanned > 0 {
+				out.RemotePercent = roundPct(remote, out.PostsScanned)
+				out.OnSitePercent = roundPct(onsite, out.PostsScanned)
+			}
+
+			// Top 10 companies by mention count.
+			type kv struct {
+				k string
+				v int
+			}
+			pairs := make([]kv, 0, len(companyCounts))
+			for k, v := range companyCounts {
+				pairs = append(pairs, kv{k, v})
+			}
+			sort.Slice(pairs, func(i, j int) bool { return pairs[i].v > pairs[j].v })
+			limit := 10
+			if len(pairs) < limit {
+				limit = len(pairs)
+			}
+			for _, p := range pairs[:limit] {
+				out.TopCompanies = append(out.TopCompanies, companyHit{Name: p.k, Count: p.v})
 			}
 
 			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
-				result := make([]map[string]any, 0, len(months))
-				for _, md := range months {
-					entry := map[string]any{
-						"title":        md.title,
-						"total_jobs":   md.total,
-						"remote_count": md.remote,
-						"salary_count": md.salary,
-						"techs":        md.techs,
-					}
-					result = append(result, entry)
-				}
-				data, _ := json.Marshal(result)
-				return printOutput(cmd.OutOrStdout(), json.RawMessage(data), true)
+				j, _ := json.MarshalIndent(out, "", "  ")
+				return printOutput(cmd.OutOrStdout(), j, true)
 			}
-
-			// Collect all techs across months
-			allTechs := map[string]bool{}
-			for _, md := range months {
-				for tech := range md.techs {
-					allTechs[tech] = true
-				}
+			fmt.Fprintf(cmd.OutOrStdout(), "Scanned %d thread(s), %d posts.\n\n", out.ThreadsScanned, out.PostsScanned)
+			fmt.Fprintln(cmd.OutOrStdout(), "Languages mentioned:")
+			lpairs := make([]kv, 0, len(out.Languages))
+			for k, v := range out.Languages {
+				lpairs = append(lpairs, kv{k, v})
 			}
-
-			// Sort techs by most recent count
-			type techCount struct {
-				name  string
-				count int
+			sort.Slice(lpairs, func(i, j int) bool { return lpairs[i].v > lpairs[j].v })
+			for _, p := range lpairs {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %-12s %d\n", p.k, p.v)
 			}
-			var sorted []techCount
-			for tech := range allTechs {
-				count := 0
-				if len(months) > 0 {
-					count = months[0].techs[tech]
+			fmt.Fprintf(cmd.OutOrStdout(), "\nRemote: %.1f%% — On-site: %.1f%%\n", out.RemotePercent, out.OnSitePercent)
+			fmt.Fprintf(cmd.OutOrStdout(), "Posts mentioning visa/H-1B: %d\n", out.HasH1B)
+			if len(out.TopCompanies) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "\nTop companies:")
+				for _, c := range out.TopCompanies {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %-30s %d\n", c.Name, c.Count)
 				}
-				sorted = append(sorted, techCount{name: tech, count: count})
-			}
-			sort.Slice(sorted, func(i, j int) bool {
-				return sorted[i].count > sorted[j].count
-			})
-
-			// Print tech table
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n\n", bold("Tech Mentions Across Hiring Threads"))
-
-			headers := []string{"TECH"}
-			for _, md := range months {
-				// Extract month name from title
-				title := md.title
-				if idx := strings.Index(title, "("); idx > 0 {
-					title = strings.TrimSpace(title[idx:])
-				}
-				headers = append(headers, truncate(title, 20))
-			}
-			if flagCompare && len(months) >= 2 {
-				headers = append(headers, "TREND")
-			}
-
-			rows := make([][]string, 0, len(sorted))
-			for _, tc := range sorted {
-				if tc.count == 0 && len(months) > 1 && months[1].techs[tc.name] == 0 {
-					continue
-				}
-				row := []string{tc.name}
-				for _, md := range months {
-					pct := float64(0)
-					if md.total > 0 {
-						pct = float64(md.techs[tc.name]) / float64(md.total) * 100
-					}
-					row = append(row, fmt.Sprintf("%d (%.0f%%)", md.techs[tc.name], pct))
-				}
-				if flagCompare && len(months) >= 2 {
-					curr := months[0].techs[tc.name]
-					prev := months[1].techs[tc.name]
-					if prev > 0 {
-						change := float64(curr-prev) / float64(prev) * 100
-						if change > 5 {
-							row = append(row, fmt.Sprintf("+%.0f%%", change))
-						} else if change < -5 {
-							row = append(row, fmt.Sprintf("%.0f%%", change))
-						} else {
-							row = append(row, "~")
-						}
-					} else if curr > 0 {
-						row = append(row, "new")
-					} else {
-						row = append(row, "-")
-					}
-				}
-				rows = append(rows, row)
-			}
-			if err := flags.printTable(cmd, headers, rows); err != nil {
-				return err
-			}
-
-			// Summary
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", bold("Summary"))
-			for _, md := range months {
-				remotePct := float64(0)
-				salaryPct := float64(0)
-				if md.total > 0 {
-					remotePct = float64(md.remote) / float64(md.total) * 100
-					salaryPct = float64(md.salary) / float64(md.total) * 100
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s: %d jobs, %d remote (%.0f%%), %d with salary (%.0f%%)\n",
-					truncate(md.title, 40), md.total, md.remote, remotePct, md.salary, salaryPct)
 			}
 			return nil
 		},
 	}
-
-	cmd.Flags().IntVar(&flagMonths, "months", 3, "Number of months to analyze")
-	cmd.Flags().BoolVar(&flagCompare, "compare", false, "Show trend comparison between months")
-
+	cmd.Flags().IntVar(&months, "months", 1, "Number of recent monthly threads to scan (1-12)")
 	return cmd
+}
+
+func mentionsWord(haystack, needle string) bool {
+	// Quick whole-word check that handles language names with no
+	// internal punctuation. Falls back to a substring check when the
+	// needle has '+' or '#' (C++, C#) since those break Go regexp word
+	// boundaries.
+	if strings.ContainsAny(needle, "+#") {
+		return strings.Contains(haystack, needle)
+	}
+	pattern := `\b` + regexp.QuoteMeta(needle) + `\b`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(haystack)
+}
+
+func roundPct(n, total int) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(n*1000/total) / 10
 }

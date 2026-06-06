@@ -17,9 +17,10 @@ func newBottleneckCmd(flags *rootFlags) *cobra.Command {
 	var jsonOut bool
 	var teamFilter string
 	cmd := &cobra.Command{
-		Use:   "bottleneck",
-		Short: "Find overloaded team members and blocked issues",
-		Long:  "Analyze issue distribution per assignee to find bottlenecks. Shows who has too many active issues and which issues are blocking others.",
+		Use:         "bottleneck",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Find overloaded team members and blocked issues",
+		Long:        "Analyze issue distribution per assignee to find bottlenecks. Shows who has too many active issues and which issues are blocking others.",
 		Example: `  linear-pp-cli bottleneck
   linear-pp-cli bottleneck --team ENG
   linear-pp-cli bottleneck --json`,
@@ -87,6 +88,12 @@ func newBottleneckCmd(flags *rootFlags) *cobra.Command {
 			sort.Slice(sorted, func(i, j int) bool {
 				return sorted[i].Active > sorted[j].Active
 			})
+
+			if len(sorted) == 0 {
+				hintIfUnsynced(cmd, db, "issues")
+			} else {
+				hintIfStale(cmd, db, "issues", flags.maxAge)
+			}
 
 			if jsonOut {
 				enc := json.NewEncoder(os.Stdout)

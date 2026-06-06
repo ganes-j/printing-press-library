@@ -1,13 +1,23 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+)
+
+var (
+	toolBinOnce sync.Once
+	toolBinPath string
+	toolBinDir  string
+	toolBinErr  error
 )
 
 func TestCopyUpstreamSkill_Present(t *testing.T) {
@@ -22,7 +32,7 @@ func TestCopyUpstreamSkill_Present(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	skillDir := filepath.Join(tmp, "skills", "pp-yahoo-finance")
+	skillDir := filepath.Join(tmp, "cli-skills", "pp-yahoo-finance")
 	skillFile := filepath.Join(skillDir, "SKILL.md")
 
 	copied, err := copyUpstreamSkill(entryPath, skillDir, skillFile)
@@ -37,8 +47,16 @@ func TestCopyUpstreamSkill_Present(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading destination: %v", err)
 	}
-	if string(got) != string(upstream) {
-		t.Errorf("destination content does not match upstream byte-for-byte\nwant: %q\ngot:  %q", upstream, got)
+	sourcePath := filepath.ToSlash(filepath.Join(entryPath, "SKILL.md"))
+	want := injectGeneratedHeader(upstream, sourcePath)
+	if string(got) != string(want) {
+		t.Errorf("destination should be upstream with generated-header injected\nwant: %q\ngot:  %q", want, got)
+	}
+	if !bytes.Contains(got, []byte("GENERATED FILE")) {
+		t.Errorf("destination missing generated-header warning, got:\n%s", got)
+	}
+	if !bytes.Contains(got, []byte(sourcePath)) {
+		t.Errorf("destination missing concrete source path %q, got:\n%s", sourcePath, got)
 	}
 }
 
@@ -50,7 +68,7 @@ func TestCopyUpstreamSkill_Absent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	skillDir := filepath.Join(tmp, "skills", "pp-no-upstream")
+	skillDir := filepath.Join(tmp, "cli-skills", "pp-no-upstream")
 	skillFile := filepath.Join(skillDir, "SKILL.md")
 
 	copied, err := copyUpstreamSkill(entryPath, skillDir, skillFile)
@@ -80,12 +98,12 @@ func TestCopyUpstreamSkill_OverwritesExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	skillDir := filepath.Join(tmp, "skills", "pp-yahoo-finance")
+	skillDir := filepath.Join(tmp, "cli-skills", "pp-yahoo-finance")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	skillFile := filepath.Join(skillDir, "SKILL.md")
-	if err := os.WriteFile(skillFile, []byte("STALE SYNTHESIS"), 0644); err != nil {
+	if err := os.WriteFile(skillFile, []byte("STALE CONTENT"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,59 +119,13 @@ func TestCopyUpstreamSkill_OverwritesExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(upstream) {
-		t.Errorf("upstream should overwrite stale synthesis\nwant: %q\ngot:  %q", upstream, got)
+	want := injectGeneratedHeader(upstream, filepath.ToSlash(filepath.Join(entryPath, "SKILL.md")))
+	if string(got) != string(want) {
+		t.Errorf("upstream (with header injected) should overwrite stale content\nwant: %q\ngot:  %q", want, got)
 	}
 }
 
-// TestInjectStaleBuildFallback covers the copy-time augmentation that
-// teaches upstream (hand-authored) SKILL.md files the same @main
-// fallback the generator template already emits. See the 2026-04-19
-// stale-@latest bug for context.
-func TestInjectStaleBuildFallback(t *testing.T) {
-	t.Run("injects after go install @latest line in a code block", func(t *testing.T) {
-		in := []byte("## CLI Installation\n\n```bash\ngo install github.com/mvanhorn/printing-press-library/library/commerce/yahoo-finance/cmd/yahoo-finance-pp-cli@latest\nyahoo-finance-pp-cli --version\n```\n")
-		got := string(injectStaleBuildFallback(in))
-		if !strings.Contains(got, "@main") {
-			t.Errorf("expected @main fallback injected, got:\n%s", got)
-		}
-		if !strings.Contains(got, "GOPRIVATE='github.com/mvanhorn/*'") {
-			t.Errorf("expected GOPRIVATE guidance injected, got:\n%s", got)
-		}
-		if !strings.Contains(got, "yahoo-finance-pp-cli@main") {
-			t.Errorf("expected binary-specific @main line, got:\n%s", got)
-		}
-	})
-
-	t.Run("is idempotent when @main already present", func(t *testing.T) {
-		in := []byte("go install github.com/mvanhorn/printing-press-library/library/x/cmd/x-pp-cli@latest\n\n# fallback: go install ...@main\n")
-		got := injectStaleBuildFallback(in)
-		if string(got) != string(in) {
-			t.Errorf("expected idempotent no-op when @main already present\nwant: %q\ngot:  %q", in, got)
-		}
-	})
-
-	t.Run("no go install lines means no injection", func(t *testing.T) {
-		in := []byte("# Title\n\nNarrative content with no install commands.\n")
-		got := injectStaleBuildFallback(in)
-		if string(got) != string(in) {
-			t.Errorf("expected no-op when no @latest install line present")
-		}
-	})
-
-	t.Run("skips metadata-JSON @latest since it is not a plain install line", func(t *testing.T) {
-		// The frontmatter metadata line is long and uses JSON quoting.
-		// Our regex requires a line starting with optional whitespace
-		// then `go install` — metadata lines do NOT satisfy this.
-		in := []byte("metadata: '{\"openclaw\":{\"install\":[{\"command\":\"go install github.com/mvanhorn/printing-press-library/library/x/cmd/x-pp-cli@latest\"}]}}'\n")
-		got := injectStaleBuildFallback(in)
-		if string(got) != string(in) {
-			t.Errorf("expected metadata @latest to be left alone (it is not a user-runnable line)")
-		}
-	})
-}
-
-func TestCopyUpstreamSkill_EmptyFallsThrough(t *testing.T) {
+func TestCopyUpstreamSkill_EmptyTreatedAsMissing(t *testing.T) {
 	tmp := t.TempDir()
 	entryPath := filepath.Join(tmp, "library", "commerce", "blank")
 	if err := os.MkdirAll(entryPath, 0755); err != nil {
@@ -163,7 +135,7 @@ func TestCopyUpstreamSkill_EmptyFallsThrough(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	skillDir := filepath.Join(tmp, "skills", "pp-blank")
+	skillDir := filepath.Join(tmp, "cli-skills", "pp-blank")
 	skillFile := filepath.Join(skillDir, "SKILL.md")
 
 	copied, err := copyUpstreamSkill(entryPath, skillDir, skillFile)
@@ -171,110 +143,79 @@ func TestCopyUpstreamSkill_EmptyFallsThrough(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if copied {
-		t.Error("expected copied=false for empty/whitespace upstream so synthesis can take over")
+		t.Error("expected copied=false for empty/whitespace upstream")
 	}
 	if _, err := os.Stat(skillFile); !os.IsNotExist(err) {
-		t.Errorf("expected destination not to exist when upstream is empty, stat err=%v", err)
+		t.Errorf("expected destination not to be written when upstream is empty, stat err=%v", err)
 	}
 }
 
 // buildTool compiles the generate-skills binary into a tempdir and returns its path.
 func buildTool(t *testing.T) string {
 	t.Helper()
-	srcDir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	binName := "generate-skills"
-	if runtime.GOOS == "windows" {
-		binName += ".exe"
-	}
-	binPath := filepath.Join(t.TempDir(), binName)
-	cmd := exec.Command("go", "build", "-o", binPath, ".")
-	cmd.Dir = srcDir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build failed: %v\n%s", err, out)
-	}
-	return binPath
-}
-
-// setupFixture writes a minimal working tree that main() expects:
-//   - registry.json at root
-//   - tools/generate-skills/skill-template.md (copied from the real template)
-//   - .claude-plugin/plugin.json (so version bump can run without a warning)
-//   - skills/ (output dir)
-func setupFixture(t *testing.T, root string, entries []RegistryEntry) {
-	t.Helper()
-
-	registry := Registry{SchemaVersion: 1, Entries: entries}
-	regJSON := fmt.Sprintf(`{"schema_version":1,"entries":[`)
-	for i, e := range entries {
-		if i > 0 {
-			regJSON += ","
+	toolBinOnce.Do(func() {
+		srcDir, err := os.Getwd()
+		if err != nil {
+			toolBinErr = err
+			return
 		}
-		regJSON += fmt.Sprintf(`{"name":%q,"category":%q,"api":%q,"description":%q,"path":%q}`,
-			e.Name, e.Category, e.API, e.Description, e.Path)
+		binName := "generate-skills"
+		if runtime.GOOS == "windows" {
+			binName += ".exe"
+		}
+		toolBinDir, err = os.MkdirTemp("", "generate-skills-test-*")
+		if err != nil {
+			toolBinErr = err
+			return
+		}
+		toolBinPath = filepath.Join(toolBinDir, binName)
+		cmd := exec.Command("go", "build", "-o", toolBinPath, ".")
+		cmd.Dir = srcDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			toolBinErr = fmt.Errorf("go build failed: %v\n%s", err, out)
+		}
+	})
+	if toolBinErr != nil {
+		t.Fatal(toolBinErr)
 	}
-	regJSON += `]}`
-	_ = registry // silence unused warning when fields unused
-	if err := os.WriteFile(filepath.Join(root, "registry.json"), []byte(regJSON), 0644); err != nil {
+	return toolBinPath
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if toolBinDir != "" {
+		_ = os.RemoveAll(toolBinDir)
+	}
+	os.Exit(code)
+}
+
+// writeManifest writes a minimal .printing-press.json fixture for a library CLI.
+func writeManifest(t *testing.T, root, category, slug, apiName string) string {
+	t.Helper()
+	dir := filepath.Join(root, "library", category, slug)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-
-	// Copy the real template so the synthesis path works.
-	srcDir, _ := os.Getwd()
-	tmplSrc, err := os.ReadFile(filepath.Join(srcDir, "skill-template.md"))
+	manifest, err := json.Marshal(PrintManifest{APIName: apiName})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tmplDir := filepath.Join(root, "tools", "generate-skills")
-	if err := os.MkdirAll(tmplDir, 0755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".printing-press.json"), manifest, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tmplDir, "skill-template.md"), tmplSrc, 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Minimal plugin.json so the version-bump path doesn't warn.
-	pluginDir := filepath.Join(root, ".claude-plugin")
-	if err := os.MkdirAll(pluginDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), []byte(`{"version": "1.0.0"}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.MkdirAll(filepath.Join(root, "skills"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	return dir
 }
 
-func TestIntegration_UpstreamPreferredOverSynthesis(t *testing.T) {
+func TestIntegration_CopiesUpstreamVerbatim(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in -short mode")
 	}
 	bin := buildTool(t)
 	root := t.TempDir()
 
-	entries := []RegistryEntry{
-		{Name: "with-upstream-pp-cli", Category: "commerce", API: "With Upstream",
-			Description: "Has upstream skill", Path: "library/commerce/with-upstream"},
-		{Name: "no-upstream-pp-cli", Category: "commerce", API: "No Upstream",
-			Description: "No upstream skill", Path: "library/commerce/no-upstream"},
-	}
-	setupFixture(t, root, entries)
-
-	// Only the first entry ships an upstream SKILL.md.
-	upstreamDir := filepath.Join(root, "library", "commerce", "with-upstream")
-	if err := os.MkdirAll(upstreamDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	upstreamContent := "---\nname: pp-with-upstream\ndescription: \"Authored upstream with research context.\"\n---\n\n# Upstream Skill\n\nNovel features and narrative.\n"
+	upstreamDir := writeManifest(t, root, "commerce", "yahoo-finance", "yahoo-finance")
+	upstreamContent := "---\nname: pp-yahoo-finance\ndescription: \"Authored upstream with research context.\"\n---\n\n# Upstream Skill\n\nNovel features and narrative.\n"
 	if err := os.WriteFile(filepath.Join(upstreamDir, "SKILL.md"), []byte(upstreamContent), 0644); err != nil {
-		t.Fatal(err)
-	}
-	noUpstreamDir := filepath.Join(root, "library", "commerce", "no-upstream")
-	if err := os.MkdirAll(noUpstreamDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -284,72 +225,94 @@ func TestIntegration_UpstreamPreferredOverSynthesis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tool exited with error: %v\n%s", err, out)
 	}
-	outStr := string(out)
 
-	// Upstream entry should be copied byte-for-byte.
-	upstreamSkill, err := os.ReadFile(filepath.Join(root, "skills", "pp-with-upstream", "SKILL.md"))
+	got, err := os.ReadFile(filepath.Join(root, "cli-skills", "pp-yahoo-finance", "SKILL.md"))
 	if err != nil {
-		t.Fatalf("reading upstream-copied skill: %v", err)
+		t.Fatalf("reading copied skill: %v", err)
 	}
-	if string(upstreamSkill) != upstreamContent {
-		t.Errorf("upstream skill not copied byte-for-byte\nwant: %q\ngot:  %q", upstreamContent, upstreamSkill)
+	want := string(injectGeneratedHeader([]byte(upstreamContent), "library/commerce/yahoo-finance/SKILL.md"))
+	if string(got) != want {
+		t.Errorf("mirrored skill should be upstream with generated-header injected\nwant: %q\ngot:  %q", want, got)
 	}
-	if !strings.Contains(outStr, "(upstream)") {
-		t.Errorf("expected (upstream) status in output, got:\n%s", outStr)
-	}
-
-	// Non-upstream entry should be synthesized from the template.
-	synthSkill, err := os.ReadFile(filepath.Join(root, "skills", "pp-no-upstream", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("reading synthesized skill: %v", err)
-	}
-	synthStr := string(synthSkill)
-	if !strings.Contains(synthStr, "name: pp-no-upstream") {
-		t.Errorf("synthesized skill missing expected frontmatter name:\n%s", synthStr)
-	}
-	if !strings.Contains(synthStr, "Printing Press CLI for No Upstream") {
-		t.Errorf("synthesized skill missing expected description:\n%s", synthStr)
-	}
-	if strings.Contains(synthStr, "Authored upstream") {
-		t.Errorf("synthesized skill should not leak upstream content:\n%s", synthStr)
-	}
-
-	// Summary should count one upstream and one registry-only.
-	if !strings.Contains(outStr, "1 upstream") {
-		t.Errorf("expected summary to report 1 upstream, got:\n%s", outStr)
-	}
-	if !strings.Contains(outStr, "1 registry-only") {
-		t.Errorf("expected summary to report 1 registry-only, got:\n%s", outStr)
+	if !strings.Contains(string(out), "Mirrored 1 skill") {
+		t.Errorf("expected mirror summary in output, got:\n%s", out)
 	}
 }
 
-func TestIntegration_UpstreamOverwritesStaleSynthesis(t *testing.T) {
+func TestIntegration_DiscoversNewCLIWithoutRegistry(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in -short mode")
 	}
 	bin := buildTool(t)
 	root := t.TempDir()
 
-	entries := []RegistryEntry{
-		{Name: "api-pp-cli", Category: "commerce", API: "API",
-			Description: "Has upstream skill", Path: "library/commerce/api"},
+	upstreamDir := writeManifest(t, root, "marketing", "customer-io", "customer-io")
+	upstreamContent := "---\nname: pp-customer-io\n---\n\n# Customer.io\n"
+	if err := os.WriteFile(filepath.Join(upstreamDir, "SKILL.md"), []byte(upstreamContent), 0644); err != nil {
+		t.Fatal(err)
 	}
-	setupFixture(t, root, entries)
 
-	// Pre-seed a stale synthesized skill.
-	staleDir := filepath.Join(root, "skills", "pp-api")
+	cmd := exec.Command(bin)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("tool exited with error: %v\n%s", err, out)
+	}
+
+	got, err := os.ReadFile(filepath.Join(root, "cli-skills", "pp-customer-io", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("reading copied skill: %v", err)
+	}
+	want := string(injectGeneratedHeader([]byte(upstreamContent), "library/marketing/customer-io/SKILL.md"))
+	if string(got) != want {
+		t.Errorf("new CLI mirror should be upstream with generated-header injected\nwant: %q\ngot:  %q", want, got)
+	}
+}
+
+func TestIntegration_FailsWhenUpstreamMissing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
+	bin := buildTool(t)
+	root := t.TempDir()
+
+	upstreamDir := writeManifest(t, root, "commerce", "with-upstream", "with-upstream")
+	if err := os.WriteFile(filepath.Join(upstreamDir, "SKILL.md"), []byte("---\nname: pp-with-upstream\n---\n\n# Has Upstream\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeManifest(t, root, "commerce", "no-upstream", "no-upstream")
+
+	cmd := exec.Command(bin)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("tool should have exited non-zero when an entry has no upstream SKILL.md\noutput:\n%s", out)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "no-upstream") {
+		t.Errorf("expected missing entry to be named in error output, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "Missing or empty library SKILL.md") {
+		t.Errorf("expected missing-skill error message, got:\n%s", outStr)
+	}
+}
+
+func TestIntegration_UpstreamOverwritesStaleMirror(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in -short mode")
+	}
+	bin := buildTool(t)
+	root := t.TempDir()
+
+	staleDir := filepath.Join(root, "cli-skills", "pp-api")
 	if err := os.MkdirAll(staleDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(staleDir, "SKILL.md"), []byte("STALE SYNTHESIZED CONTENT"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(staleDir, "SKILL.md"), []byte("STALE MIRROR CONTENT"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Ship a fresh upstream SKILL.md.
-	upstreamDir := filepath.Join(root, "library", "commerce", "api")
-	if err := os.MkdirAll(upstreamDir, 0755); err != nil {
-		t.Fatal(err)
-	}
+	upstreamDir := writeManifest(t, root, "commerce", "api", "api")
 	upstreamContent := "---\nname: pp-api\ndescription: \"Fresh upstream.\"\n---\n\n# Fresh\n"
 	if err := os.WriteFile(filepath.Join(upstreamDir, "SKILL.md"), []byte(upstreamContent), 0644); err != nil {
 		t.Fatal(err)
@@ -365,8 +328,169 @@ func TestIntegration_UpstreamOverwritesStaleSynthesis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != upstreamContent {
-		t.Errorf("upstream should overwrite stale synthesis\nwant: %q\ngot:  %q", upstreamContent, got)
+	want := string(injectGeneratedHeader([]byte(upstreamContent), "library/commerce/api/SKILL.md"))
+	if string(got) != want {
+		t.Errorf("upstream (with header injected) should overwrite stale mirror\nwant: %q\ngot:  %q", want, got)
 	}
 }
 
+func TestPruneOrphanSkills(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Layout: two registry-backed skills, one orphan, one non-pp dir, one
+	// stray file. Only the orphan pp-* dir should be removed.
+	mustMkdir := func(p string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(tmp, p), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustMkdir("pp-flight-goat")
+	mustMkdir("pp-recipe-goat")
+	mustMkdir("pp-flightgoat") // orphan: library no longer has it
+	mustMkdir("not-a-pp-dir")  // unrelated content, must be preserved
+	if err := os.WriteFile(filepath.Join(tmp, "stray.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	expected := map[string]struct{}{
+		"pp-flight-goat": {},
+		"pp-recipe-goat": {},
+	}
+	removed := pruneOrphanSkills(tmp, expected)
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1", removed)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "pp-flightgoat")); !os.IsNotExist(err) {
+		t.Errorf("pp-flightgoat should have been removed, stat err = %v", err)
+	}
+	for _, keep := range []string{"pp-flight-goat", "pp-recipe-goat", "not-a-pp-dir", "stray.txt"} {
+		if _, err := os.Stat(filepath.Join(tmp, keep)); err != nil {
+			t.Errorf("%s should still exist: %v", keep, err)
+		}
+	}
+}
+
+func TestInjectGeneratedHeader_WithFrontmatter(t *testing.T) {
+	src := []byte("---\nname: pp-thing\ndescription: \"hi\"\n---\n\n# Body\n\nNarrative.\n")
+	got := injectGeneratedHeader(src, "library/productivity/thing/SKILL.md")
+	gotStr := string(got)
+
+	frontmatter := "---\nname: pp-thing\ndescription: \"hi\"\n---\n"
+	if !strings.HasPrefix(gotStr, frontmatter) {
+		t.Errorf("frontmatter must be the first bytes of the file for skill parsers; got prefix: %q", gotStr[:len(frontmatter)])
+	}
+	headerStart := strings.Index(gotStr, "<!-- GENERATED FILE")
+	if headerStart != len(frontmatter) {
+		t.Errorf("header should be injected immediately after frontmatter close, got headerStart=%d, want %d", headerStart, len(frontmatter))
+	}
+	if !strings.Contains(gotStr, "# Body\n\nNarrative.\n") {
+		t.Errorf("body content lost, got:\n%s", gotStr)
+	}
+	if !strings.Contains(gotStr, "library/productivity/thing/SKILL.md") {
+		t.Errorf("header should include the concrete source path, got:\n%s", gotStr)
+	}
+	if strings.Contains(gotStr, "library/<category>/<slug>/SKILL.md") {
+		t.Errorf("header should not include the placeholder path, got:\n%s", gotStr)
+	}
+}
+
+// TestInjectGeneratedHeader_NoAgentConfigLiteral guards against reintroducing a
+// literal agent-config filename into the generated header. Hermes' skills guard
+// (and similar scanners) flag the substrings AGENTS.md, CLAUDE.md, .cursorrules,
+// and .clinerules as CRITICAL "persistence" findings, which hard-block install of
+// every mirrored cli-skills/pp-*/SKILL.md. The header must point at the docs
+// without naming the file. See docs/plans/2026-06-01-001-fix-hermes-skills-guard-false-positive-plan.md.
+func TestInjectGeneratedHeader_NoAgentConfigLiteral(t *testing.T) {
+	src := []byte("---\nname: pp-thing\ndescription: \"hi\"\n---\n\n# Body\n")
+	got := string(injectGeneratedHeader(src, "library/productivity/thing/SKILL.md"))
+	for _, literal := range []string{"AGENTS.md", "CLAUDE.md", ".cursorrules", ".clinerules"} {
+		if strings.Contains(got, literal) {
+			t.Errorf("generated header must not contain the scanner-tripping literal %q (flags every mirror DANGEROUS in Hermes), got:\n%s", literal, got)
+		}
+	}
+}
+
+func TestInjectGeneratedHeader_NoFrontmatter(t *testing.T) {
+	src := []byte("# Plain skill\n\nNo frontmatter at all.\n")
+	got := injectGeneratedHeader(src, "library/productivity/plain/SKILL.md")
+	gotStr := string(got)
+
+	if !strings.HasPrefix(gotStr, "<!-- GENERATED FILE") {
+		t.Errorf("with no frontmatter, header should prepend the file, got prefix: %q", gotStr[:50])
+	}
+	if !strings.HasSuffix(gotStr, string(src)) {
+		t.Errorf("original body should be preserved after the header, got:\n%s", gotStr)
+	}
+}
+
+func TestInjectGeneratedHeader_Idempotent(t *testing.T) {
+	src := []byte("---\nname: pp-thing\n---\n\n# Body\n")
+	once := injectGeneratedHeader(src, "library/productivity/thing/SKILL.md")
+	twice := injectGeneratedHeader(once, "library/productivity/thing/SKILL.md")
+	if string(once) != string(twice) {
+		t.Errorf("injectGeneratedHeader should be idempotent\nonce:  %q\ntwice: %q", once, twice)
+	}
+}
+
+func TestInjectGeneratedHeader_IdempotentWithDifferentSourcePathLength(t *testing.T) {
+	src := []byte("---\nname: pp-thing\n---\n\n# Body\n")
+	once := injectGeneratedHeader(src, "library/productivity/a-very-long-generated-skill-source-path/SKILL.md")
+	twice := injectGeneratedHeader(once, "x/SKILL.md")
+	if string(once) != string(twice) {
+		t.Errorf("injectGeneratedHeader should not depend on formatted source path length\nonce:  %q\ntwice: %q", once, twice)
+	}
+}
+
+func TestInjectGeneratedHeader_WindowsLineEndings(t *testing.T) {
+	src := []byte("---\r\nname: pp-thing\r\n---\r\n\r\n# Body\r\n")
+	got := injectGeneratedHeader(src, "library/productivity/thing/SKILL.md")
+	gotStr := string(got)
+	headerStart := strings.Index(gotStr, "<!-- GENERATED FILE")
+	if headerStart < 0 {
+		t.Fatalf("header not injected; got:\n%s", gotStr)
+	}
+	// Header must come AFTER the closing fence so frontmatter parsers
+	// don't see it as part of the YAML block.
+	closeFenceIdx := strings.Index(gotStr, "---\r\n\r\n")
+	if closeFenceIdx < 0 {
+		// Fence-with-trailing-blank pattern may have been split; fall back
+		// to checking the second `---\r\n` after the opener.
+		closeFenceIdx = strings.Index(gotStr[len("---\r\n"):], "---\r\n") + len("---\r\n")
+	}
+	if headerStart <= closeFenceIdx {
+		t.Errorf("header injected before frontmatter close; headerStart=%d closeFenceIdx=%d", headerStart, closeFenceIdx)
+	}
+}
+
+func TestFrontmatterEnd(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{"unix frontmatter", "---\nname: x\n---\nbody", len("---\nname: x\n---\n")},
+		{"windows frontmatter", "---\r\nname: x\r\n---\r\nbody", len("---\r\nname: x\r\n---\r\n")},
+		{"no frontmatter", "# Plain\n", 0},
+		{"missing close", "---\nname: x\nno close ever", 0},
+		{"three dashes mid-line is not fence", "---\nname: x\nfoo ---\n---\nbody", len("---\nname: x\nfoo ---\n---\n")},
+		{"empty input", "", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := frontmatterEnd([]byte(tc.in))
+			if got != tc.want {
+				t.Errorf("frontmatterEnd(%q) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPruneOrphanSkills_DirMissing(t *testing.T) {
+	// Fresh checkout where cli-skills/ doesn't exist yet should not error.
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	removed := pruneOrphanSkills(missing, map[string]struct{}{})
+	if removed != 0 {
+		t.Fatalf("removed = %d, want 0 for missing dir", removed)
+	}
+}

@@ -16,10 +16,11 @@ func newSubCmd(flags *rootFlags) *cobra.Command {
 		limit   int
 	)
 	cmd := &cobra.Command{
-		Use:     "sub <ingredient>",
-		Short:   "Look up substitutions for an ingredient",
-		Example: "  recipe-goat-pp-cli sub buttermilk --context baking",
-		Args:    cobra.MinimumNArgs(1),
+		Use:         "sub <ingredient>",
+		Short:       "Look up culinary substitutions for an ingredient, optionally filtered by recipe context (baking, dairy-free, etc.)",
+		Example:     "  recipe-goat-pp-cli sub buttermilk --context baking",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Args:        cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ingredient := strings.Join(args, " ")
 			subs := recipes.LookupSubs(ingredient, context)

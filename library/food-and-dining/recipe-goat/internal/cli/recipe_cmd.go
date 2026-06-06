@@ -24,6 +24,10 @@ func newRecipeCmd(flags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newRecipeOpenCmd(flags))
 	cmd.AddCommand(newRecipeReviewsCmd(flags))
 	cmd.AddCommand(newRecipeCostCmd(flags))
+	cmd.AddCommand(newRecipeGetCmd(flags))
+	cmd.AddCommand(newRecipeOpenCmd(flags))
+	cmd.AddCommand(newRecipeReviewsCmd(flags))
+	cmd.AddCommand(newRecipeCostCmd(flags))
 	return cmd
 }
 
@@ -37,10 +41,11 @@ func newRecipeGetCmd(flags *rootFlags) *cobra.Command {
 		reviews    bool
 	)
 	cmd := &cobra.Command{
-		Use:     "get <url>",
-		Short:   "Fetch and render a recipe from its URL",
-		Example: "  recipe-goat-pp-cli recipe get https://www.budgetbytes.com/creamy-mushroom-pasta/ --servings 6 --print",
-		Args:    cobra.ExactArgs(1),
+		Use:         "get <url>",
+		Short:       "Fetch and render a recipe from its source URL with optional scaling, unit conversion, and USDA nutrition backfill",
+		Example:     "  recipe-goat-pp-cli recipe get https://www.budgetbytes.com/creamy-mushroom-pasta/ --servings 6 --print",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Args:        cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
 			if _, err := url.ParseRequestURI(target); err != nil {
@@ -108,10 +113,11 @@ func newRecipeGetCmd(flags *rootFlags) *cobra.Command {
 
 func newRecipeOpenCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:     "open <id>",
-		Short:   "Open a saved recipe in the default browser",
-		Example: "  recipe-goat-pp-cli recipe open 12",
-		Args:    cobra.ExactArgs(1),
+		Use:         "open <id>",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Open a saved recipe in the default browser",
+		Example:     "  recipe-goat-pp-cli recipe open 12",
+		Args:        cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
@@ -153,10 +159,11 @@ func newRecipeOpenCmd(flags *rootFlags) *cobra.Command {
 
 func newRecipeReviewsCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:     "reviews <id>",
-		Short:   "Show a digest of cook modifications (planned, wip)",
-		Example: "  recipe-goat-pp-cli recipe reviews 12",
-		Args:    cobra.ExactArgs(1),
+		Use:         "reviews <id>",
+		Short:       "Show aggregated review-derived modifications for a saved recipe",
+		Example:     "  recipe-goat-pp-cli recipe reviews 12",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Args:        cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
@@ -196,10 +203,11 @@ func newRecipeReviewsCmd(flags *rootFlags) *cobra.Command {
 
 func newRecipeCostCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:     "cost <id>",
-		Short:   "Estimate cost per serving (approximate, wip)",
-		Example: "  recipe-goat-pp-cli recipe cost 12",
-		Args:    cobra.ExactArgs(1),
+		Use:         "cost <id>",
+		Short:       "Estimate per-serving cost for a saved recipe using ingredient count and serving size",
+		Example:     "  recipe-goat-pp-cli recipe cost 12",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Args:        cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {

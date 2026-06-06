@@ -1,4 +1,0 @@
-name: espn-pp-mcp
-description: espn API
-startCommand:
-    command: go run ./cmd/espn-pp-mcp

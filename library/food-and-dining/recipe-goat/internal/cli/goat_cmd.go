@@ -35,14 +35,31 @@ func newGoatCmd(flags *rootFlags) *cobra.Command {
 		saveAll  bool
 	)
 	cmd := &cobra.Command{
-		Use:   "goat <query>",
-		Short: "Cross-site recipe ranker — fetch and rank the best version of any dish",
+		Use:         "goat <query>",
+		Short:       "Cross-site recipe ranker — fetch candidates and rank by query relevance, rating, popularity, and site trust",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		Long: `Search across curated recipe sites, fetch each candidate, then rank by
-a weighted score of rating, review volume, site trust, and recency.
+a weighted score of query-title overlap, rating, review volume, site
+trust, and recency. Best for "I want the best <specific dish>" queries
+("chicken tikka masala", "moist chocolate layer cake from scratch");
+broad category queries like "chocolate cake" can still surface
+popular-but-related recipes (cookies, cheesecake) — narrow with more
+specific phrasing or --sites for category exploration.
 
 Ranking weights:
-  0.55 rating_normalized + 0.25 log(reviews+1)/log(1000)
-  + 0.15 site_trust + 0.05 recency_norm`,
+  0.20 query_relevance + 0.35 rating_normalized
+  + 0.25 log(reviews+1)/log(1000) + 0.15 site_trust + 0.05 recency_norm
+
+query_relevance is the fraction of query tokens that appear in the
+recipe title (case-insensitive, stop-word stripped, plural-folded).
+
+Two trust-aware adjustments before scoring:
+  - Editorial baseline: curated sites (trust >= 0.9) with no Schema.org
+    rating get rating=4.5/reviews=100 imputed (treats curation as ~100
+    implicit favorable reviews).
+  - Bayesian smoothing: aggregator sites (trust < 0.85) ratings smoothed
+    toward prior mean 4.0 with credibility C=200. A 5.0/100 becomes
+    effective 4.33; a 4.7/5000 stays at 4.67.`,
 		Example: "  recipe-goat-pp-cli goat \"chicken tikka masala\" --limit 5",
 		Args:    cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -149,7 +166,7 @@ Ranking weights:
 			entries := make([]goatEntry, 0, len(fetched))
 			for _, r := range fetched {
 				site := recipes.FindSite(r.Site)
-				score := goatScore(r, site)
+				score := goatScore(r, site, query)
 				entries = append(entries, goatEntry{
 					Title:       r.Name,
 					URL:         r.URL,
@@ -218,17 +235,52 @@ Ranking weights:
 }
 
 // goatScore implements the ranking formula. All components are in [0,1].
-func goatScore(r *recipes.Recipe, site recipes.Site) float64 {
+//
+// Query relevance is the fraction of query tokens (post-stopword,
+// post-plural-fold) that appear in the recipe title. Without it the
+// ranker becomes a popularity contest — a 5.0/552-review chocolate
+// chip cookie outranks every chocolate cake when the query is
+// "chocolate cake", because the keyword filter only requires one
+// matching token.
+//
+// Two trust-aware adjustments before the weighted sum (added 2026-04-26):
+//
+//  1. Editorial-baseline imputation. When a curated site (trust >= 0.9)
+//     publishes a recipe with NO Schema.org aggregateRating (rating=0,
+//     reviews=0), impute rating=4.5 and reviews=100. Rationale: those
+//     sites have human editorial vetting; the absence of a rating widget
+//     is not the same as the absence of curation. This gives niche
+//     curated recipes a fair floor without making them invincible.
+//
+//  2. Bayesian smoothing on aggregator-site ratings. When a crowdsourced
+//     aggregator (trust < 0.85) reports a rating, smooth toward the prior
+//     mean 4.0 with credibility weight C=200. A 5.0 with 100 reviews
+//     becomes effective 4.33; a 4.7 with 5000 reviews stays 4.67. This
+//     fixes the "100 reviewers gave it 5 stars" ≠ "5000 reviewers gave
+//     it 4.7 stars" credibility problem the raw mean ignores.
+func goatScore(r *recipes.Recipe, site recipes.Site, query string) float64 {
+	rating := r.AggregateRating.Value
+	reviews := r.AggregateRating.Count
+	if rating == 0 && reviews == 0 && site.Trust >= 0.9 {
+		rating = 4.5
+		reviews = 100
+	}
+	if site.Trust < 0.85 && rating > 0 && reviews > 0 {
+		const credibilityC = 200.0
+		const priorMean = 4.0
+		rating = (rating*float64(reviews) + priorMean*credibilityC) / (float64(reviews) + credibilityC)
+	}
+
 	ratingNorm := 0.0
-	if r.AggregateRating.Value > 0 {
-		ratingNorm = r.AggregateRating.Value / 5.0
+	if rating > 0 {
+		ratingNorm = rating / 5.0
 		if ratingNorm > 1.0 {
 			ratingNorm = 1.0
 		}
 	}
 	reviewNorm := 0.0
-	if r.AggregateRating.Count > 0 {
-		reviewNorm = math.Log(float64(r.AggregateRating.Count+1)) / math.Log(1000)
+	if reviews > 0 {
+		reviewNorm = math.Log(float64(reviews+1)) / math.Log(1000)
 		if reviewNorm > 1.0 {
 			reviewNorm = 1.0
 		}
@@ -255,7 +307,62 @@ func goatScore(r *recipes.Recipe, site recipes.Site) float64 {
 			}
 		}
 	}
-	return 0.55*ratingNorm + 0.25*reviewNorm + 0.15*siteTrust + 0.05*recency
+	relevance := queryRelevance(r.Name, query)
+	return 0.20*relevance + 0.35*ratingNorm + 0.25*reviewNorm + 0.15*siteTrust + 0.05*recency
+}
+
+// queryRelevance returns the fraction of query tokens that appear in the
+// recipe title. Title and query are tokenized identically: lowercased,
+// punctuation stripped, English stop words removed, trailing 's' folded
+// off so "cookie" and "cookies" match. An empty query (no tokens after
+// filtering) returns 0.5 — neutral — so the ranker doesn't penalize
+// every recipe equally when the user passes only stop words.
+func queryRelevance(title, query string) float64 {
+	qTokens := relevanceTokens(query)
+	if len(qTokens) == 0 {
+		return 0.5
+	}
+	titleSet := make(map[string]struct{}, 16)
+	for _, t := range relevanceTokens(title) {
+		titleSet[t] = struct{}{}
+	}
+	matched := 0
+	for _, qt := range qTokens {
+		if _, ok := titleSet[qt]; ok {
+			matched++
+		}
+	}
+	return float64(matched) / float64(len(qTokens))
+}
+
+var relevanceStopWords = map[string]struct{}{
+	"a": {}, "an": {}, "and": {}, "the": {}, "of": {}, "for": {},
+	"with": {}, "in": {}, "on": {}, "to": {}, "from": {}, "by": {},
+	"recipe": {}, "recipes": {}, "best": {},
+}
+
+// relevanceTokens lowercases, splits on non-letter runes, drops short
+// words and stop words, and strips a trailing 's' to fold simple plurals.
+// Returns a slice (not a set) because callers may want positional info.
+func relevanceTokens(s string) []string {
+	s = strings.ToLower(s)
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if len(f) < 3 {
+			continue
+		}
+		if _, stop := relevanceStopWords[f]; stop {
+			continue
+		}
+		if len(f) > 3 && strings.HasSuffix(f, "s") {
+			f = f[:len(f)-1]
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 func min(a, b int) int {

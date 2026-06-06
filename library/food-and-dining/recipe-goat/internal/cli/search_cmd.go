@@ -17,10 +17,11 @@ func newSearchCmd(flags *rootFlags) *cobra.Command {
 		limit       int
 	)
 	cmd := &cobra.Command{
-		Use:     "search <query>",
-		Short:   "Lightweight cross-site recipe search (metadata only, no fetch)",
-		Example: "  recipe-goat-pp-cli search \"vegan curry\" --kid-friendly --limit 10",
-		Args:    cobra.MinimumNArgs(1),
+		Use:         "search <query>",
+		Short:       "Search recipe titles across curated sites without fetching the full recipes (returns metadata only)",
+		Example:     "  recipe-goat-pp-cli search \"vegan curry\" --kid-friendly --limit 10",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Args:        cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
 			ctx, cancel := flags.withContext()

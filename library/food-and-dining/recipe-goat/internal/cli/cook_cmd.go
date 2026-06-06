@@ -18,6 +18,8 @@ func newCookCmd(flags *rootFlags) *cobra.Command {
 	}
 	cmd.AddCommand(newCookLogCmd(flags))
 	cmd.AddCommand(newCookHistoryCmd(flags))
+	cmd.AddCommand(newCookLogCmd(flags))
+	cmd.AddCommand(newCookHistoryCmd(flags))
 	return cmd
 }
 
@@ -74,9 +76,10 @@ func newCookHistoryCmd(flags *rootFlags) *cobra.Command {
 		since    string
 	)
 	cmd := &cobra.Command{
-		Use:     "history",
-		Short:   "Show cooking history",
-		Example: "  recipe-goat-pp-cli cook history --since 30d",
+		Use:         "history",
+		Short:       "List past cooking sessions with ratings and notes, most recent first",
+		Example:     "  recipe-goat-pp-cli cook history --since 30d",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRecipeStore()
 			if err != nil {

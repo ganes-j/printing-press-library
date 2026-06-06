@@ -22,6 +22,12 @@ func newCookbookCmd(flags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newCookbookTagCmd(flags))
 	cmd.AddCommand(newCookbookUntagCmd(flags))
 	cmd.AddCommand(newCookbookMatchCmd(flags))
+	cmd.AddCommand(newCookbookListCmd(flags))
+	cmd.AddCommand(newCookbookSearchCmd(flags))
+	cmd.AddCommand(newCookbookRemoveCmd(flags))
+	cmd.AddCommand(newCookbookTagCmd(flags))
+	cmd.AddCommand(newCookbookUntagCmd(flags))
+	cmd.AddCommand(newCookbookMatchCmd(flags))
 	return cmd
 }
 
@@ -31,9 +37,10 @@ func newCookbookListCmd(flags *rootFlags) *cobra.Command {
 		limit             int
 	)
 	cmd := &cobra.Command{
-		Use:     "list",
-		Short:   "List saved recipes",
-		Example: "  recipe-goat-pp-cli cookbook list --tag weeknight --json",
+		Use:         "list",
+		Short:       "List recipes saved to the local cookbook, optionally filtered by tag, site, or author",
+		Example:     "  recipe-goat-pp-cli cookbook list --tag weeknight --json",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRecipeStore()
 			if err != nil {
@@ -78,10 +85,11 @@ func newCookbookSearchCmd(flags *rootFlags) *cobra.Command {
 		limit         int
 	)
 	cmd := &cobra.Command{
-		Use:     "search <query>",
-		Short:   "Full-text search across saved recipes",
-		Example: "  recipe-goat-pp-cli cookbook search \"chicken\" --with rice --without shellfish",
-		Args:    cobra.MinimumNArgs(1),
+		Use:         "search <query>",
+		Short:       "Full-text search the local cookbook by title and ingredients, with optional include/exclude filters",
+		Example:     "  recipe-goat-pp-cli cookbook search \"chicken\" --with rice --without shellfish",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Args:        cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
 			st, err := openRecipeStore()
@@ -241,9 +249,10 @@ func newCookbookMatchCmd(flags *rootFlags) *cobra.Command {
 		limit      int
 	)
 	cmd := &cobra.Command{
-		Use:     "match",
-		Short:   "Find recipes you can make right now from pantry ingredients",
-		Example: "  recipe-goat-pp-cli cookbook match --have \"chicken,rice,broccoli\" --missing-max 2",
+		Use:         "match",
+		Short:       "Find recipes you can make right now from pantry ingredients",
+		Example:     "  recipe-goat-pp-cli cookbook match --have \"chicken,rice,broccoli\" --missing-max 2",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			haveList := splitCSV(have)
 			if len(haveList) == 0 {

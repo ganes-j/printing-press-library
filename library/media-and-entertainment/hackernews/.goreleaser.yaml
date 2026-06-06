@@ -45,7 +45,7 @@ brews:
       owner: trevin-chow
       name: homebrew-tap
     homepage: "https://github.com/mvanhorn/printing-press-library"
-    description: "Hacker News from your terminal — browse, search, and analyze developer news with multi-source ratings and pipe-friendly output"
+    description: "Hacker News from your terminal — with a local store, full-text search, and agent-native output no other HN tool has"
     install: |
       bin.install "hackernews-pp-cli"
       bin.install "hackernews-pp-mcp"

@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "generated_at": "2026-04-02T04:17:06.807773Z",
-  "printing_press_version": "0.4.0",
-  "api_name": "dominos",
-  "cli_name": "dominos-pp-cli",
-  "spec_path": "/Users/mvanhorn/printing-press/.runstate/runs/20260401-205937/research/dominos-combined-spec.yaml"
-}

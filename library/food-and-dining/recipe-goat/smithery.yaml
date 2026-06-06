@@ -1,8 +1,0 @@
-name: recipe-goat-pp-mcp
-description: recipe-goat API
-startCommand:
-    command: go run ./cmd/recipe-goat-pp-mcp
-env:
-    USDA_FDC_API_KEY:
-        description: recipe-goat API credential
-        required: true

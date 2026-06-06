@@ -1,4 +1,4 @@
-// Copyright 2026 matt-van-horn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 
 package cli
 
@@ -10,7 +10,11 @@ import (
 )
 
 func TestRequireDeeplineKeyMissing(t *testing.T) {
-	t.Setenv("DEEPLINE_API_KEY", "")
+	// Sandbox $HOME so the resolver's file-discovery step can't find the
+	// real ~/.local/deepline/<host>/.env on the dev machine. Without this,
+	// "no env/flag" doesn't actually mean "no key" — auto-discovery would
+	// pick up the user's real key and the assertion would flip.
+	withFakeHome(t, t.TempDir())
 	err := requireDeeplineKey(&deeplineFlags{})
 	if err == nil {
 		t.Fatal("requireDeeplineKey with no env/flag should error")
@@ -21,6 +25,7 @@ func TestRequireDeeplineKeyMissing(t *testing.T) {
 }
 
 func TestRequireDeeplineKeyMalformed(t *testing.T) {
+	withFakeHome(t, t.TempDir())
 	t.Setenv("DEEPLINE_API_KEY", "foo_not_dlp")
 	err := requireDeeplineKey(&deeplineFlags{})
 	if err == nil {
@@ -32,7 +37,7 @@ func TestRequireDeeplineKeyMalformed(t *testing.T) {
 }
 
 func TestRequireDeeplineKeyFromFlag(t *testing.T) {
-	t.Setenv("DEEPLINE_API_KEY", "")
+	withFakeHome(t, t.TempDir())
 	if err := requireDeeplineKey(&deeplineFlags{apiKey: "dlp_abc"}); err != nil {
 		t.Errorf("flag key should satisfy preflight: %v", err)
 	}
@@ -70,9 +75,9 @@ func TestPreflightWaterfallDeeplineValidKey(t *testing.T) {
 
 func TestShouldPreflightDossier(t *testing.T) {
 	cases := []struct {
-		name         string
-		sections     []string
-		enrichEmail  bool
+		name          string
+		sections      []string
+		enrichEmail   bool
 		wantPreflight bool
 	}{
 		{"no-email-no-enrich", []string{"profile", "research"}, false, false},
@@ -93,12 +98,12 @@ func TestNormalizePersonInputHandlesURLVariants(t *testing.T) {
 	// This helper is the one Unit 3 relies on for the linkedin_url ->
 	// linkedin_username fix. Lock the behavior in a test.
 	cases := map[string]string{
-		"williamhgates":                               "williamhgates",
-		"https://www.linkedin.com/in/williamhgates":   "williamhgates",
-		"https://www.linkedin.com/in/williamhgates/":  "williamhgates",
-		"http://linkedin.com/in/alonsovelasco":        "alonsovelasco",
-		"/in/alonsovelasco/":                          "alonsovelasco",
-		"https://www.linkedin.com/in/mkscrg":          "mkscrg",
+		"williamhgates": "williamhgates",
+		"https://www.linkedin.com/in/williamhgates":  "williamhgates",
+		"https://www.linkedin.com/in/williamhgates/": "williamhgates",
+		"http://linkedin.com/in/alonsovelasco":       "alonsovelasco",
+		"/in/alonsovelasco/":                         "alonsovelasco",
+		"https://www.linkedin.com/in/mkscrg":         "mkscrg",
 	}
 	for in, want := range cases {
 		if got := normalizePersonInput(in); got != want {

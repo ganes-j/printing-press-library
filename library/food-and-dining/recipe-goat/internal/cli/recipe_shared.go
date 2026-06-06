@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/enetx/surf"
+
 	"github.com/mvanhorn/printing-press-library/library/food-and-dining/recipe-goat/internal/recipes"
 	"github.com/mvanhorn/printing-press-library/library/food-and-dining/recipe-goat/internal/store"
 )
@@ -37,11 +39,20 @@ func openRecipeStore() (*store.Store, error) {
 // httpClientForSites returns an *http.Client tuned for site scraping.
 // The global --rate-limit flag is ignored here on purpose: these are
 // third-party sites we crawl, not the USDA API.
+//
+// Backed by enetx/surf with Chrome impersonation: TLS fingerprint and
+// HTTP/2 frame sequencing match a real Chrome session, which bypasses
+// Dotdash/Cloudflare/PerimeterX bot screens that 403/429 a plain Go
+// stdlib http.Client. This is the upgrade that re-enabled AllRecipes
+// and Food52 fan-out after the 2026-04-13 baseline removed them.
 func httpClientForSites(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	return &http.Client{Timeout: timeout}
+	c := surf.NewClient().Builder().Impersonate().Chrome().Timeout(timeout).Session().Build().Unwrap()
+	hc := c.Std()
+	hc.Timeout = timeout
+	return hc
 }
 
 // recipeToStored converts the parsed schema.org Recipe into our store DTO.

@@ -3,25 +3,83 @@
 Super LinkedIn for the terminal. Search, enrich, and map warm-intro paths
 across LinkedIn, Happenstance, and Deepline from one SQLite-backed CLI.
 
+Created by [@mvanhorn](https://github.com/mvanhorn) (Matt Van Horn).
+
 ## Install
 
-### Go
+The recommended path installs both the `contact-goat-pp-cli` binary and the `pp-contact-goat` agent skill (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and other agents supported by the upstream [`skills`](https://github.com/vercel-labs/skills) CLI) in one shot:
+
+```bash
+npx -y @mvanhorn/printing-press-library install contact-goat
+```
+
+For CLI only (no skill):
+
+```bash
+npx -y @mvanhorn/printing-press-library install contact-goat --cli-only
+```
+
+For skill only — installs the skill into the same agents as the default command above, but skips the CLI binary (use this to update or reinstall just the skill):
+
+```bash
+npx -y @mvanhorn/printing-press-library install contact-goat --skill-only
+```
+
+To constrain the skill install to one or more specific agents (repeatable — agent names match the [`skills`](https://github.com/vercel-labs/skills) CLI):
+
+```bash
+npx -y @mvanhorn/printing-press-library install contact-goat --agent claude-code
+npx -y @mvanhorn/printing-press-library install contact-goat --agent claude-code --agent codex
+```
+
+### Without Node (Go fallback)
+
+If `npx` isn't available (no Node, offline), install the CLI directly via Go (requires Go 1.26.3 or newer):
 
 ```bash
 go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli@latest
 ```
 
-If `@latest` installs a stale build (the Go module proxy cache can lag
-the repo by hours after a fresh merge), install from main directly:
+This installs the CLI only — no skill.
+
+### Pre-built binary
+
+Download a pre-built binary for your platform from the [latest release](https://github.com/mvanhorn/printing-press-library/releases/tag/contact-goat-current). On macOS, clear the Gatekeeper quarantine: `xattr -d com.apple.quarantine <binary>`. On Unix, mark it executable: `chmod +x <binary>`.
+
+<!-- pp-hermes-install-anchor -->
+## Install for Hermes
+
+Install the CLI binary first. The installer writes binaries to a per-user managed bin directory by default: `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows.
 
 ```bash
-GOPRIVATE='github.com/mvanhorn/*' GOFLAGS=-mod=mod \
-  go install github.com/mvanhorn/printing-press-library/library/sales-and-crm/contact-goat/cmd/contact-goat-pp-cli@main
+npx -y @mvanhorn/printing-press-library install contact-goat --cli-only
 ```
 
-### Binary
+Then install the focused Hermes skill.
 
-Download from [Releases](https://github.com/mvanhorn/printing-press-library/releases).
+From the Hermes CLI:
+
+```bash
+hermes skills install mvanhorn/printing-press-library/cli-skills/pp-contact-goat --force
+```
+
+Inside a Hermes chat session:
+
+```bash
+/skills install mvanhorn/printing-press-library/cli-skills/pp-contact-goat --force
+```
+
+Restart the Hermes session or gateway if the newly installed skill is not visible immediately.
+
+## Install for OpenClaw
+
+Install both the CLI binary and the focused OpenClaw skill. The installer defaults binaries to a per-user bin directory (`$HOME/.local/bin` on macOS/Linux, `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows):
+
+```bash
+npx -y @mvanhorn/printing-press-library install contact-goat --agent openclaw
+```
+
+Restart the OpenClaw session or gateway if the newly installed skill is not visible immediately.
 
 ## Authentication
 
@@ -82,6 +140,16 @@ and `budget`. Get a key from [code.deepline.com](https://code.deepline.com):
 ```bash
 export DEEPLINE_API_KEY="dlp_..."
 ```
+
+If you have the official [Deepline CLI](https://code.deepline.com) installed
+and authenticated (`deepline auth register` or `deepline auth status`),
+contact-goat auto-discovers the saved key from
+`~/.local/deepline/<host>/.env` — you do **not** need to re-export it into
+your shell. The resolver checks `--deepline-key` first, then
+`DEEPLINE_API_KEY` env, then the sibling-CLI file (mode 0600 or 0400
+required, value must start with `dlp_`, no symlinks outside `$HOME`).
+`contact-goat-pp-cli doctor` reports the resolution source as
+`set (env)` / `set (flag)` / `set (file:~/.local/...)` / `not set`.
 
 Every Deepline-touching command surfaces estimated credit cost before
 execution and requires `--yes` to spend.
@@ -298,7 +366,8 @@ Sample output:
   OK LinkedIn: uvx: ok
   OK LinkedIn: binary: will launch via `uvx linkedin-scraper-mcp@latest`
   WARN LinkedIn: profile: not logged in — run `uvx linkedin-scraper-mcp@latest --login`
-  WARN Deepline: DEEPLINE_API_KEY: not set
+  OK Deepline: DEEPLINE_API_KEY: set (file:~/.local/deepline/code-deepline-com/.env)
+  OK Deepline: prefix: ok (dlp_)
   OK Deepline: CLI on PATH: /Users/you/.local/bin/deepline
   config_path: ~/.config/contact-goat-pp-cli/config.toml
   base_url: https://happenstance.ai

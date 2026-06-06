@@ -1,4 +1,0 @@
-name: yahoo-finance-pp-mcp
-description: yahoo-finance API
-startCommand:
-    command: go run ./cmd/yahoo-finance-pp-mcp

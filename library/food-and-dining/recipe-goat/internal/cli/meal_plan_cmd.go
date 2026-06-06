@@ -21,6 +21,10 @@ func newMealPlanCmd(flags *rootFlags) *cobra.Command {
 	cmd.AddCommand(newMealPlanShowCmd(flags))
 	cmd.AddCommand(newMealPlanRemoveCmd(flags))
 	cmd.AddCommand(newMealPlanShoppingCmd(flags))
+	cmd.AddCommand(newMealPlanSetCmd(flags))
+	cmd.AddCommand(newMealPlanShowCmd(flags))
+	cmd.AddCommand(newMealPlanRemoveCmd(flags))
+	cmd.AddCommand(newMealPlanShoppingCmd(flags))
 	return cmd
 }
 
@@ -74,9 +78,10 @@ func newMealPlanShowCmd(flags *rootFlags) *cobra.Command {
 	var from, to string
 	var week bool
 	cmd := &cobra.Command{
-		Use:     "show",
-		Short:   "Show planned meals over a date range",
-		Example: "  recipe-goat-pp-cli meal-plan show --week",
+		Use:         "show",
+		Short:       "Show planned meals over a date range",
+		Example:     "  recipe-goat-pp-cli meal-plan show --week",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f, t := resolveDateRange(from, to, week)
 			st, err := openRecipeStore()
@@ -146,9 +151,10 @@ func newMealPlanShoppingCmd(flags *rootFlags) *cobra.Command {
 	var from, to, export string
 	var week, aisle bool
 	cmd := &cobra.Command{
-		Use:     "shopping-list",
-		Short:   "Aggregate ingredients across planned meals",
-		Example: "  recipe-goat-pp-cli meal-plan shopping-list --week --aisle",
+		Use:         "shopping-list",
+		Short:       "Aggregate ingredients across planned meals into a shopping list, optionally grouped by grocery aisle",
+		Example:     "  recipe-goat-pp-cli meal-plan shopping-list --week --aisle",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f, t := resolveDateRange(from, to, week)
 			st, err := openRecipeStore()

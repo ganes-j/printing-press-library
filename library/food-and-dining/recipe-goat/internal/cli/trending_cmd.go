@@ -25,11 +25,22 @@ func newTrendingCmd(flags *rootFlags) *cobra.Command {
 		limit      int
 	)
 	cmd := &cobra.Command{
-		Use:     "trending",
-		Short:   "Show the top recipes currently featured on each site's homepage",
-		Example: "  recipe-goat-pp-cli trending --site budgetbytes,recipetineats --limit 5",
+		Use:         "trending",
+		Short:       "Show the top recipes currently featured on each site's homepage",
+		Example:     "  recipe-goat-pp-cli trending --site budgetbytes,recipetineats --limit 5",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sites := siteHostsFromCSV(siteFilter)
+			// Dry-run skips the homepage fan-out: useful for CI / structural
+			// verifiers and to advertise which sites would be queried without
+			// hitting the network.
+			if flags.dryRun {
+				if flags.asJSON {
+					return flags.printJSON(cmd, []trendingEntry{})
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "trending: dry-run; would query %d site(s) (limit=%d)\n", len(sites), limit)
+				return nil
+			}
 			client := httpClientForSites(flags.timeout)
 			ctx, cancel := flags.withContext()
 			defer cancel()
@@ -98,7 +109,7 @@ func newTrendingCmd(flags *rootFlags) *cobra.Command {
 }
 
 // shortErr condenses an error to a single-line reason tag for stderr warnings.
-// Full error chains are too noisy when we're already listing 15 sites.
+// Full error chains are too noisy when we're already listing 37 sites.
 func shortErr(err error) string {
 	if err == nil {
 		return ""

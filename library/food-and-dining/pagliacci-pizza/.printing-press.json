@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "generated_at": "2026-04-04T04:04:18.307839Z",
-  "printing_press_version": "0.4.0",
-  "api_name": "pagliacci-pizza",
-  "cli_name": "pagliacci-pizza-pp-cli",
-  "spec_path": "/Users/tmchow/printing-press/manuscripts/pagliacci-pizza-pp-cli/20260403-020133/research/pagliacci-spec.yaml",
-  "run_id": "20260403-210334"
-}

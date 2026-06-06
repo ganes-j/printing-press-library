@@ -1,4 +1,4 @@
-// Copyright 2026 matt-van-horn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 
 // dossier: unified single-person view built from LinkedIn + Happenstance +
 // (optionally) Deepline. Composes a single JSON document with per-source
@@ -42,8 +42,9 @@ func newDossierCmd(flags *rootFlags) *cobra.Command {
 		deeplineKey string
 	)
 	cmd := &cobra.Command{
-		Use:   "dossier <person>",
-		Short: "Build a unified person dossier across LinkedIn, Happenstance, and Deepline",
+		Use:         "dossier <person>",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Build a unified person dossier across LinkedIn, Happenstance, and Deepline",
 		Long: `Compose a single view of a person from all configured sources.
 
 Sections (default all free):
@@ -65,8 +66,8 @@ is passed. Pass --enrich-email to spend Deepline credits for email/phone.`,
 			// key is missing rather than letting the dossier run through
 			// LinkedIn + Happenstance before surfacing the auth gap.
 			if shouldPreflightDossier(sections, enrichEmail) {
-				if key := firstNonEmpty(deeplineKey, os.Getenv("DEEPLINE_API_KEY")); key == "" {
-					return authErr(fmt.Errorf("dossier --enrich-email needs DEEPLINE_API_KEY (set env or pass --deepline-key)\nhint: keys at https://code.deepline.com/dashboard/api-keys"))
+				if key, _ := resolveDeeplineKey(deeplineKey); key == "" {
+					return authErr(fmt.Errorf("dossier --enrich-email needs DEEPLINE_API_KEY (set env or pass --deepline-key)\nhint: keys at https://code.deepline.com/dashboard/api-keys\n      or run 'deepline auth status --reveal' if you've already authenticated with the Deepline CLI"))
 				}
 			}
 
@@ -126,10 +127,7 @@ is passed. Pass --enrich-email to spend Deepline credits for email/phone.`,
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					key := deeplineKey
-					if key == "" {
-						key = os.Getenv("DEEPLINE_API_KEY")
-					}
+					key, _ := resolveDeeplineKey(deeplineKey)
 					if key == "" {
 						dlErr = errors.New("no Deepline API key")
 						return

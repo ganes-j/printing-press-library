@@ -182,7 +182,7 @@ func looksLikeRecipeLink(href string, site Site) bool {
 		return false
 	}
 	// Skip obvious non-recipe paths.
-	for _, bad := range []string{"/search", "/tag/", "/category/", "/categories/", "/about", "/contact", "/privacy", "/subscribe", "/newsletter", "/author/", "/authors/", "/page/", "/collection/", "/collections/", "/topics/", "/gallery/", "/galleries/", "/video/", "/videos/", "/shop", "/store/", "/random", "/feed", "/feeds", ".jpg", ".png", ".webp", ".gif", ".svg", ".pdf", ".css", ".js"} {
+	for _, bad := range []string{"/search", "/tag/", "/category/", "/categories/", "/about", "/contact", "/privacy", "/subscribe", "/newsletter", "/author/", "/authors/", "/page/", "/collection/", "/collections/", "/topics/", "/gallery/", "/galleries/", "/video/", "/videos/", "/shop", "/store/", "/random", "/feed", "/feeds", "/recommends/", "/recommend/", ".jpg", ".png", ".webp", ".gif", ".svg", ".pdf", ".css", ".js"} {
 		if strings.Contains(l, bad) {
 			return false
 		}

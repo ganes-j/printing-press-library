@@ -1,0 +1,27 @@
+{
+  "manifest_version": "0.3",
+  "name": "yahoo-finance-pp-mcp",
+  "display_name": "Yahoo Finance",
+  "version": "4.14.0",
+  "description": "Every Yahoo Finance endpoint plus a SQLite portfolio, covered-call screener, and Chrome-cookie fallback the libraries don't ship.",
+  "author": {
+    "name": "CLI Printing Press"
+  },
+  "license": "Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "bin/yahoo-finance-pp-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/bin/yahoo-finance-pp-mcp",
+      "args": []
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2026 matt-van-horn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 
 // source_selection.go is the runtime decision seam for "cookie vs bearer"
 // on every Happenstance-touching CLI command (coverage, hp people,
@@ -389,6 +389,16 @@ func ExecuteWithSourceFallback(
 	res, err := cookieRun()
 	if err == nil {
 		return FallbackResult{Result: res, UsedSource: SourceCookie}, nil
+	}
+	if errors.Is(err, client.ErrCookieBroadQuery) {
+		// Cookie surface bailed early on a broad query (poll-timeout,
+		// 5xx upstream, or stuck "Thinking" status past 90s). Surface a
+		// hint pointing at the bearer surface and exit 5 (API error)
+		// rather than retrying or falling through to a generic error.
+		// Auto-fallback to bearer is intentionally not done: the user
+		// did not authorize spending credits on this call.
+		fmt.Fprintln(errOut, "cookie surface timed out (likely a broad query). Retry with --source api to use the bearer surface (2 credits/call).")
+		return FallbackResult{UsedSource: SourceCookie}, apiErr(err)
 	}
 	if !IsCookieRateLimitError(err) {
 		// Non-429 cookie error: surface verbatim. We do NOT silently fall

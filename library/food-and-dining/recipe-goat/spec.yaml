@@ -1,7 +1,10 @@
 name: recipe-goat
-description: "Recipe GOAT — find the best version of any recipe across 15 trusted sites, with offline cookbook, pantry match, substitution lookup, meal planning, and USDA-backed nutrition."
-version: "0.1.0"
+display_name: Recipe GOAT
+kind: synthetic
+description: "Recipe GOAT — find the best version of any recipe across 37 trusted sites, with offline cookbook, pantry match, substitution lookup, meal planning, and USDA-backed nutrition."
+version: "0.2.0"
 base_url: "https://api.nal.usda.gov/fdc/v1"
+http_transport: browser-chrome  # Chrome-impersonated client (Surf) — bypasses TLS-fingerprint bot detection on Dotdash/Cloudflare-fronted recipe sites (AllRecipes, Food52, etc.)
 
 auth:
   type: api_key
@@ -9,6 +12,11 @@ auth:
   in: header
   env_vars:
     - USDA_FDC_API_KEY
+  key_url: "https://fdc.nal.usda.gov/api-key-signup"
+  # Opt-in: only used by `recipe get --nutrition` to backfill USDA macros
+  # when the recipe site omits them. Core ranking, save, search, cookbook,
+  # and meal-plan flows do not require this key.
+  optional: true
 
 config:
   format: toml

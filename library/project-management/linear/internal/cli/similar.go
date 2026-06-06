@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mvanhorn/printing-press-library/library/project-management/linear/internal/cliutil"
 	"github.com/mvanhorn/printing-press-library/library/project-management/linear/internal/store"
 
 	"github.com/spf13/cobra"
@@ -16,14 +17,23 @@ func newSimilarCmd(flags *rootFlags) *cobra.Command {
 	var jsonOut bool
 	var limit int
 	cmd := &cobra.Command{
-		Use:   "similar <query>",
-		Short: "Find potentially duplicate issues using fuzzy text search",
-		Long:  "Search locally synced issues using FTS5 full-text search to find potential duplicates. Works offline.",
+		Use:         "similar [query]",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Find potentially duplicate issues using fuzzy text search",
+		Long:        "Search locally synced issues using FTS5 full-text search to find potential duplicates. Works offline.",
 		Example: `  linear-pp-cli similar "login bug"
   linear-pp-cli similar "payment failed" --limit 20
   linear-pp-cli similar "onboarding" --json`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			// Verify mode: short-circuit so a synthetic query against an
+			// empty FTS index doesn't fail the mechanical verify pass.
+			if cliutil.IsVerifyEnv() {
+				return nil
+			}
 			if dbPath == "" {
 				dbPath = defaultDBPath("linear-pp-cli")
 			}
@@ -43,6 +53,12 @@ func newSimilarCmd(flags *rootFlags) *cobra.Command {
 
 			if limit > 0 && len(results) > limit {
 				results = results[:limit]
+			}
+
+			if len(results) == 0 {
+				hintIfUnsynced(cmd, db, "issues")
+			} else {
+				hintIfStale(cmd, db, "issues", flags.maxAge)
 			}
 
 			if jsonOut {

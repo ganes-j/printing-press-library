@@ -1,0 +1,89 @@
+name: Auto-tag npm release
+
+# Reconcile the published npm release with npm/package.json on every push to
+# main: if the version in npm/package.json has no matching `npm-v<version>` git
+# tag yet, push that tag and dispatch npm-publish.yml for it. Tag pushes made
+# with GITHUB_TOKEN do not trigger another workflow run, so the dispatch step is
+# the part that actually starts the trusted publishing flow.
+#
+# Release rhythm (unchanged for the author):
+#   1. Bump npm/package.json version in a PR (alongside any code change).
+#   2. Merge the PR.
+#   3. This workflow tags + dispatches npm-publish.yml. Done.
+#
+# Why it runs on EVERY push and gates on tag existence (not a version diff):
+# the original workflow used `paths: ['npm/package.json']` + a HEAD~1 version
+# diff, which gave the release exactly ONE chance to fire — the single push that
+# bumped the version. When that one trigger was missed, there was no recovery.
+# That is exactly what happened to 0.1.16 (the `--bin-dir` feature): the bump
+# landed on main, two other path-filtered workflows ran on the same push, but
+# this one did not — so no tag, no publish, and npm stayed pinned to 0.1.15 for
+# days while `npx` users hit "Unknown install option: --bin-dir".
+#
+# Gating on "does npm-v<current version> exist?" makes the job self-healing and
+# idempotent: any later push to main re-checks and catches a missed release on
+# the next push, and it never double-publishes (an existing tag is a no-op that
+# exits in milliseconds; npm also rejects republishing an existing version). The
+# per-push run is the recovery mechanism, not waste.
+#
+# Things that do NOT produce a release: any push where npm/package.json's version
+# already has a tag (the common case — a fast no-op), and `[skip ci]` bot regen
+# commits (registry / skill regenerations), which skip this workflow entirely.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  actions: write    # needs to dispatch npm-publish.yml
+  contents: write   # needs to push the tag
+
+# Serialize runs so two near-simultaneous main pushes can't race on the same tag.
+concurrency:
+  group: auto-tag-npm
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: check
+        name: Detect unreleased version
+        run: |
+          set -euo pipefail
+          new=$(jq -r .version npm/package.json)
+          if [ -z "$new" ] || [ "$new" = "null" ]; then
+            echo "No version in npm/package.json; nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag="npm-v$new"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag already exists; nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$tag does not exist; will tag and publish $new."
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push tag
+        if: steps.check.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          tag="${{ steps.check.outputs.tag }}"
+          git tag "$tag"
+          git push origin "$tag"
+          echo "Pushed $tag."
+
+      - name: Dispatch npm publish workflow
+        if: steps.check.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.check.outputs.tag }}"
+          gh workflow run npm-publish.yml --ref "$tag"
+          echo "Dispatched npm-publish.yml for $tag."

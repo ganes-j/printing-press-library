@@ -25,9 +25,10 @@ var presetSaveCmd = &cobra.Command{
 }
 
 var presetListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List saved presets",
-	RunE:  runPresetList,
+	Use:         "list",
+	Annotations: map[string]string{"mcp:read-only": "true"},
+	Short:       "List saved presets",
+	RunE:        runPresetList,
 }
 
 var presetDeleteCmd = &cobra.Command{
@@ -38,10 +39,11 @@ var presetDeleteCmd = &cobra.Command{
 }
 
 var presetShowCmd = &cobra.Command{
-	Use:   "show <name>",
-	Short: "Show details of a preset",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runPresetShow,
+	Use:         "show <name>",
+	Annotations: map[string]string{"mcp:read-only": "true"},
+	Short:       "Show details of a preset",
+	Args:        cobra.ExactArgs(1),
+	RunE:        runPresetShow,
 }
 
 // Preset flags

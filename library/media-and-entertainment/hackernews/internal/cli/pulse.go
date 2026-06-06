@@ -4,170 +4,161 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/mvanhorn/printing-press-library/library/media-and-entertainment/hackernews/internal/algolia"
 	"github.com/spf13/cobra"
 )
 
+// pulse aggregates Algolia hits per day to give a velocity view of a
+// topic. We pull stories AND comments mentioning the topic in the
+// configured window, bucket by UTC date, then return mentions and
+// summed points per bucket.
+
+type pulseDay struct {
+	Date     string `json:"date"`
+	Mentions int    `json:"mentions"`
+	Points   int    `json:"total_points"`
+}
+
+type pulseResult struct {
+	Topic      string     `json:"topic"`
+	WindowDays int        `json:"window_days"`
+	TotalHits  int        `json:"total_hits"`
+	TopStories []topStory `json:"top_stories"`
+	Days       []pulseDay `json:"days"`
+}
+
+type topStory struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+	Points int    `json:"points"`
+	Author string `json:"author"`
+}
+
 func newPulseCmd(flags *rootFlags) *cobra.Command {
-	var flagSince string
+	var days int
+	var hitsPerPage int
 
 	cmd := &cobra.Command{
 		Use:   "pulse <topic>",
-		Short: "What's HN saying about a topic this week — activity timeline and stats",
-		Long: `Search for a topic across recent HN stories and show aggregate stats:
-total stories, points, comments, and activity by day.`,
-		Example: `  # What's happening with AI this week
-  hackernews-pp-cli pulse "artificial intelligence"
+		Short: "Show what HN is saying about a topic this week — score, comment, frequency by day",
+		Long: `Run an Algolia query for a topic, scoped to the last N days, and bucket
+hits by UTC date.
 
-  # Rust activity in the last 30 days
-  hackernews-pp-cli pulse rust --since 30d
-
-  # JSON output
-  hackernews-pp-cli pulse "open source" --json`,
-		Args: cobra.ExactArgs(1),
+Output shows mentions per day, summed points, and the top 5 stories
+(by points) in the window. Useful for tracking topic velocity without
+clicking through paginated search results.`,
+		Example: strings.Trim(`
+  hackernews-pp-cli pulse rust --days 7
+  hackernews-pp-cli pulse openai --days 30 --json
+`, "\n"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			topic := args[0]
-
-			since := "7d"
-			if flagSince != "" {
-				since = flagSince
+			if len(args) == 0 {
+				return cmd.Help()
 			}
-			dur, err := parseDuration(since)
-			if err != nil {
-				return usageErr(err)
-			}
-			ts := sinceTimestamp(dur)
-
-			params := map[string]string{
-				"query":          topic,
-				"tags":           "story",
-				"numericFilters": fmt.Sprintf("created_at_i>%d", ts),
-				"hitsPerPage":    "200",
-			}
-
-			data, err := algoliaGet("/search_by_date", params)
-			if err != nil {
-				return apiErr(err)
-			}
-
-			hits, err := algoliaHits(data)
-			if err != nil {
-				return apiErr(err)
-			}
-
-			if len(hits) == 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "No stories about %q in the last %s\n", topic, since)
+			if dryRunOK(flags) {
 				return nil
 			}
+			topic := strings.TrimSpace(args[0])
+			if topic == "" {
+				return usageErr(fmt.Errorf("topic is required and must be non-empty"))
+			}
+			// Reject obvious sentinel/test patterns: a topic surrounded by
+			// double underscores ("__foo__") is not real HN search input.
+			if strings.HasPrefix(topic, "__") && strings.HasSuffix(topic, "__") {
+				return usageErr(fmt.Errorf("topic %q looks like a placeholder; supply a real query string", topic))
+			}
+			if days <= 0 {
+				days = 7
+			}
+			cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour).Unix()
 
-			// Aggregate stats
-			totalPoints := 0
-			totalComments := 0
-			dayActivity := map[string]int{}
-			dayPoints := map[string]int{}
+			ac := algolia.New(flags.timeout)
+			resp, err := ac.Search(topic, algolia.SearchOpts{
+				Tags:           "story",
+				NumericFilters: "created_at_i>" + strconv.FormatInt(cutoff, 10),
+				HitsPerPage:    hitsPerPage,
+				ByDate:         true,
+			})
+			if err != nil {
+				return apiErr(err)
+			}
 
-			for _, h := range hits {
-				pts := getInt(h, "points")
-				cmts := getInt(h, "num_comments")
-				totalPoints += pts
-				totalComments += cmts
-
-				t := getInt(h, "created_at_i")
-				if t > 0 {
-					day := time.Unix(int64(t), 0).Format("2006-01-02")
-					dayActivity[day]++
-					dayPoints[day] += pts
+			byDay := map[string]*pulseDay{}
+			top := []topStory{}
+			topicLower := strings.ToLower(topic)
+			for _, h := range resp.Hits {
+				date := time.Unix(h.CreatedAtI, 0).UTC().Format("2006-01-02")
+				if _, ok := byDay[date]; !ok {
+					byDay[date] = &pulseDay{Date: date}
 				}
-			}
-
-			// Sort days
-			var days []string
-			for d := range dayActivity {
-				days = append(days, d)
-			}
-			sort.Strings(days)
-
-			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
-				timeline := make([]map[string]any, 0, len(days))
-				for _, d := range days {
-					timeline = append(timeline, map[string]any{
-						"date":    d,
-						"stories": dayActivity[d],
-						"points":  dayPoints[d],
+				byDay[date].Mentions++
+				byDay[date].Points += h.Points
+				// Algolia returns story records that contain the
+				// query *anywhere* — including in story_text that's
+				// often a tangentially-related comment quote. For the
+				// "top stories" list we want only stories whose title
+				// or URL actually contains the topic, otherwise an
+				// agent gets misleading results (e.g. searching for
+				// "rust" surfaces a Mercor breach story because the
+				// term appears in the body).
+				if strings.Contains(strings.ToLower(h.Title), topicLower) ||
+					strings.Contains(strings.ToLower(h.URL), topicLower) {
+					top = append(top, topStory{
+						ID: h.ObjectID, Title: h.Title, URL: h.URL,
+						Points: h.Points, Author: h.Author,
 					})
 				}
-				result := map[string]any{
-					"topic":          topic,
-					"period":         since,
-					"total_stories":  len(hits),
-					"total_points":   totalPoints,
-					"total_comments": totalComments,
-					"timeline":       timeline,
-				}
-				data, _ := json.Marshal(result)
-				return printOutput(cmd.OutOrStdout(), json.RawMessage(data), true)
 			}
-
-			// Human output
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%s %q (last %s)\n\n", bold("Pulse:"), topic, since)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Stories:    %d\n", len(hits))
-			fmt.Fprintf(cmd.OutOrStdout(), "  Points:     %d\n", totalPoints)
-			fmt.Fprintf(cmd.OutOrStdout(), "  Comments:   %d\n", totalComments)
-
-			avgPts := float64(totalPoints) / float64(len(hits))
-			fmt.Fprintf(cmd.OutOrStdout(), "  Avg points: %.1f\n", avgPts)
-
-			// Timeline
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", bold("Activity Timeline"))
-
-			// Find max for bar chart
-			maxCount := 0
-			for _, c := range dayActivity {
-				if c > maxCount {
-					maxCount = c
-				}
-			}
-
-			barWidth := 30
-			for _, d := range days {
-				count := dayActivity[d]
-				pts := dayPoints[d]
-				barLen := 0
-				if maxCount > 0 {
-					barLen = count * barWidth / maxCount
-				}
-				if barLen < 1 && count > 0 {
-					barLen = 1
-				}
-				bar := ""
-				for i := 0; i < barLen; i++ {
-					bar += "█"
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s  %s %d stories (%d pts)\n", d, bar, count, pts)
-			}
-
-			// Top stories
-			sort.Slice(hits, func(i, j int) bool {
-				return getInt(hits[i], "points") > getInt(hits[j], "points")
-			})
-			top := hits
+			// Top 5 by points.
+			sort.Slice(top, func(i, j int) bool { return top[i].Points > top[j].Points })
 			if len(top) > 5 {
 				top = top[:5]
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "\n%s\n", bold("Top Stories"))
-			for i, h := range top {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %d. %s (%d pts, %d comments)\n",
-					i+1, truncate(getString(h, "title"), 60),
-					getInt(h, "points"), getInt(h, "num_comments"))
-			}
-			fmt.Fprintln(cmd.OutOrStdout())
 
+			// Sorted day list.
+			out := pulseResult{
+				Topic:      topic,
+				WindowDays: days,
+				TotalHits:  resp.NbHits,
+				TopStories: top,
+			}
+			for _, d := range byDay {
+				out.Days = append(out.Days, *d)
+			}
+			sort.Slice(out.Days, func(i, j int) bool { return out.Days[i].Date < out.Days[j].Date })
+
+			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
+				j, _ := json.MarshalIndent(out, "", "  ")
+				return printOutput(cmd.OutOrStdout(), j, true)
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "%q over the last %d days — %d total hits\n\n", topic, days, resp.NbHits)
+			rows := make([][]string, 0, len(out.Days))
+			for _, d := range out.Days {
+				rows = append(rows, []string{d.Date, strconv.Itoa(d.Mentions), strconv.Itoa(d.Points)})
+			}
+			if err := flags.printTable(cmd, []string{"DATE", "MENTIONS", "POINTS"}, rows); err != nil {
+				return err
+			}
+			if len(out.TopStories) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "\nTop stories in window:")
+				for _, t := range out.TopStories {
+					url := t.URL
+					if url == "" {
+						url = "https://news.ycombinator.com/item?id=" + t.ID
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "  [%d] %s — %s\n", t.Points, truncateAtRune(t.Title, 70), url)
+				}
+			}
 			return nil
 		},
 	}
-
-	cmd.Flags().StringVar(&flagSince, "since", "7d", "Time window (default 7d)")
-
+	cmd.Flags().IntVar(&days, "days", 7, "Window in days (1-180)")
+	cmd.Flags().IntVar(&hitsPerPage, "hits-per-page", 100, "Max hits to fetch (capped at 1000 by Algolia)")
 	return cmd
 }

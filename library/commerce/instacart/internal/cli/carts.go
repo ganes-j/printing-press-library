@@ -13,8 +13,9 @@ import (
 
 func newCartsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "carts",
-		Short: "List every active cart across your retailers",
+		Use:         "carts",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "List every active cart across your retailers",
 		Long: `Instacart users typically have one cart per retailer. This command lists
 every active cart on your account -- Costco, Sprouts, CVS, whatever you've
 been shopping at -- with item counts.`,
@@ -72,8 +73,9 @@ been shopping at -- with item counts.`,
 
 func newCartCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cart",
-		Short: "Inspect or modify a specific cart",
+		Use:         "cart",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Inspect or modify a specific cart",
 	}
 	cmd.AddCommand(newCartShowCmd(), newCartRemoveCmd())
 	return cmd
@@ -81,8 +83,9 @@ func newCartCmd() *cobra.Command {
 
 func newCartShowCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <retailer-slug>",
-		Short: "Show the contents of your cart at a retailer with real item names",
+		Use:         "show <retailer-slug>",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Show the contents of your cart at a retailer with real item names",
 		Long: `Lists every item in your active cart at <retailer> with its real product
 name, quantity, and item id. Chains CartData -> ShopCollectionScoped ->
 Items under the hood, caching resolved names to the local products table

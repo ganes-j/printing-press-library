@@ -1,5 +1,5 @@
 {
-  "dir": "/Users/mvanhorn/printing-press/.runstate/mvanhorn-eb6a05f2/runs/20260407-234803/working/linear-pp-cli",
+  "dir": "\u003ccli-dir\u003e/linear",
   "workflows": null,
   "verdict": "workflow-pass",
   "issues": [

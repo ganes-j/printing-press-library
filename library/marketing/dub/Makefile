@@ -16,9 +16,9 @@ clean:
 	rm -rf bin/
 
 build-mcp:
-	go build -o bin/dub-mcp ./cmd/dub-mcp
+	go build -o bin/dub-pp-mcp ./cmd/dub-pp-mcp
 
 install-mcp:
-	go install ./cmd/dub-mcp
+	go install ./cmd/dub-pp-mcp
 
 build-all: build build-mcp

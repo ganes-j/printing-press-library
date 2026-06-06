@@ -23,22 +23,29 @@ type Site struct {
 // Sites is the built-in registry of recipe sources.
 //
 // Curation principle: the list optimizes for sites that reliably return
-// content to a Go HTTP client, not for sites with the highest traffic.
-// Mass-media-conglomerate sites that serve Cloudflare/Akamai bot
-// challenges (Dotdash Meredith, WBD, some Condé Nast properties) are
-// intentionally excluded from fan-out — users who want specific recipes
-// from those sites can still pass the URL to `recipe get`, which falls
-// back to archive.org when the live fetch is blocked.
+// content to a real-browser HTTP client, not for sites with the highest
+// traffic. Selection is based on (a) Recipe JSON-LD presence on permalink
+// pages, (b) static-HTML search results that surface actual recipe
+// permalinks (not just category links — Food52's search is JS-rendered
+// and returns 0 candidates here even though `recipe get` works fine).
 //
-// Removed from earlier versions: Food52, Food Network, Allrecipes,
-// Simply Recipes, EatingWell — all structurally blocked (403/429)
-// during testing in April 2026. Each has at least one comparable
-// replacement in the current list:
-//   - Food52 (editorial) → Bon Appétit, BBC Food
-//   - Food Network (celebrity chef) → chef-brand sites, BBC Food
-//   - Allrecipes (crowd-reviewed generic) → The Cozy Cook, Budget Bytes
-//   - Simply Recipes (generalist) → The Cozy Cook
-//   - EatingWell (healthy weeknight) → Skinnytaste
+// History: Food52, Food Network, AllRecipes, Simply Recipes, EatingWell
+// and Serious Eats were tiered as "blocked" or "fragile" in April 2026
+// because plain Go HTTP got 403/429/EOF from Dotdash/Cloudflare/PerimeterX
+// bot screens. As of 2026-04-26 the CLI uses enetx/surf with Chrome
+// impersonation (TLS fingerprint + HTTP/2 frame ordering). Re-probes
+// against the live sites confirmed:
+//   - AllRecipes: 200 + Recipe JSON-LD; search returns real permalinks
+//   - Food52: 200 + Recipe JSON-LD on `recipe get`; search HTML lacks
+//     permalinks (JS-rendered) so search returns 0 — kept in Sites
+//     because `recipe get`/`save` work for known URLs
+//   - Food Network: search returns 18+ recipe permalinks
+//   - Simply Recipes: search returns recipe permalinks → real Recipe page
+//   - EatingWell: same
+//   - Serious Eats: same — promoted from Tier 3 to Tier 1
+//
+// The Tier label is now a content-trust label only; it has no relationship
+// to reachability since Surf clears every site in the registry.
 var Sites = []Site{
 	// Tier 1 — independent, high-authority, reliably reachable.
 	{Name: "King Arthur Baking", Hostname: "kingarthurbaking.com", Tier: 1, SearchURL: "https://www.kingarthurbaking.com/search?f%5B0%5D=content_type%3Arecipe&q={q}", Trust: 0.9},
@@ -70,15 +77,37 @@ var Sites = []Site{
 	{Name: "Indian Healthy Recipes", Hostname: "indianhealthyrecipes.com", Tier: 1, SearchURL: "https://www.indianhealthyrecipes.com/?s={q}", Trust: 0.9},
 	{Name: "Sip and Feast", Hostname: "sipandfeast.com", Tier: 1, SearchURL: "https://www.sipandfeast.com/?s={q}", Trust: 0.9},
 
-	// Tier 2 — brand/editorial authority, generally reachable but fragile
-	// (Condé Nast properties have started gating in recent quarters).
-	{Name: "Bon Appétit", Hostname: "bonappetit.com", Tier: 2, SearchURL: "https://www.bonappetit.com/search?q={q}", Trust: 0.8},
-	{Name: "Epicurious", Hostname: "epicurious.com", Tier: 2, SearchURL: "https://www.epicurious.com/search/{q}", Trust: 0.8},
-	{Name: "Gaz Oakley", Hostname: "gazoakleychef.com", Tier: 2, SearchURL: "https://www.gazoakleychef.com/?s={q}", Trust: 0.8},
+	// Tier 1 — re-added 2026-04-26 via Surf-Chrome impersonation. Plain Go
+	// HTTP got 403/429 on these; Surf reaches them all with Recipe JSON-LD.
+	// The Food52 search endpoint is /search?query={q} (their own SearchAction
+	// target), not /recipes/search?q={q} which 404s. Note: Food52's *search*
+	// page is JS-rendered (returns 0 permalinks), but `recipe get` works for
+	// any known Food52 URL — kept here so the goat ranker has the option.
+	//
+	// Trust differentiation (2026-04-26): the four Dotdash-Meredith / mass-
+	// market crowdsourced aggregators (AllRecipes, Food Network, Simply
+	// Recipes, EatingWell) are weighted *below* the editorially-curated
+	// sites. Same parent company owns AllRecipes, Simply Recipes, and
+	// EatingWell, with no cross-site editorial curation. Recipes there are
+	// user-submitted with light moderation. They serve as a fallback /
+	// breadth signal — when an editorial site has the dish at a similar
+	// rating, the editorial site wins on tie-break via the 0.15 site_trust
+	// term in the goat ranker. Food Network is mid-tier (TV-chef brand
+	// editorial, but recipe quality is mixed).
+	{Name: "Food52", Hostname: "food52.com", Tier: 1, SearchURL: "https://food52.com/search?query={q}", Trust: 0.9},
+	{Name: "AllRecipes", Hostname: "allrecipes.com", Tier: 1, SearchURL: "https://www.allrecipes.com/search?q={q}", Trust: 0.7},
+	{Name: "Food Network", Hostname: "foodnetwork.com", Tier: 1, SearchURL: "https://www.foodnetwork.com/search/{q}-", Trust: 0.75},
+	{Name: "Simply Recipes", Hostname: "simplyrecipes.com", Tier: 1, SearchURL: "https://www.simplyrecipes.com/search?q={q}", Trust: 0.7},
+	{Name: "EatingWell", Hostname: "eatingwell.com", Tier: 1, SearchURL: "https://www.eatingwell.com/search?q={q}", Trust: 0.7},
+	{Name: "Serious Eats", Hostname: "seriouseats.com", Tier: 1, SearchURL: "https://www.seriouseats.com/search?q={q}", Trust: 0.95},
 
-	// Tier 3 — high content trust but intermittent reachability; kept here
-	// because they still resolve today. Drop to opt-in if they start blocking.
-	{Name: "Serious Eats", Hostname: "seriouseats.com", Tier: 3, SearchURL: "https://www.seriouseats.com/search?q={q}", Trust: 0.95},
+	// Tier 2 — brand/editorial authority. Surf reaches all three; tier label
+	// is a content-trust signal, not a reachability signal anymore.
+	// Epicurious search URL fixed 2026-04-26: was /search/{q} (404); their
+	// real search endpoint is /search?q={q}.
+	{Name: "Bon Appétit", Hostname: "bonappetit.com", Tier: 2, SearchURL: "https://www.bonappetit.com/search?q={q}", Trust: 0.8},
+	{Name: "Epicurious", Hostname: "epicurious.com", Tier: 2, SearchURL: "https://www.epicurious.com/search?q={q}", Trust: 0.8},
+	{Name: "Gaz Oakley", Hostname: "gazoakleychef.com", Tier: 2, SearchURL: "https://www.gazoakleychef.com/?s={q}", Trust: 0.8},
 }
 
 // recipeURLPatterns is a lookup of compiled per-host regexes for candidate
@@ -101,11 +130,11 @@ var recipeURLPatterns = map[string]string{
 	"thewoksoflife.com":         `^/[a-z0-9-]{6,}/?$`,
 	"justonecookbook.com":       `^/[a-z0-9-]{6,}/?$`,
 	"thecozycook.com":           `^/[a-z0-9-]{6,}/?$`,
-	"themediterraneandish.com": `^/[a-z0-9-]{6,}/?$`,
-	"kitchensanctuary.com":     `^/[a-z0-9-]{6,}/?$`,
-	"grandbaby-cakes.com":      `^/[a-z0-9-]{6,}/?$`,
-	"mykoreankitchen.com":      `^/[a-z0-9-]{6,}/?$`,
-	"oliviascuisine.com":       `^/[a-z0-9-]{6,}/?$`,
+	"themediterraneandish.com":  `^/[a-z0-9-]{6,}/?$`,
+	"kitchensanctuary.com":      `^/[a-z0-9-]{6,}/?$`,
+	"grandbaby-cakes.com":       `^/[a-z0-9-]{6,}/?$`,
+	"mykoreankitchen.com":       `^/[a-z0-9-]{6,}/?$`,
+	"oliviascuisine.com":        `^/[a-z0-9-]{6,}/?$`,
 	"feedthepudge.com":          `^/[a-z0-9-]{6,}/?$`,
 	"preppykitchen.com":         `^/[a-z0-9-]{6,}/?$`,
 	"sallysbakingaddiction.com": `^/[a-z0-9-]{6,}/?$`,
@@ -130,11 +159,17 @@ var recipeURLPatterns = map[string]string{
 	// Keeping the URL patterns means users who paste one of these URLs
 	// into `recipe get` still get correct site-level metadata.
 	"omnivorescookbook.com": `^/[a-z0-9-]{6,}/?$`,
-	"food52.com":            `^/recipes/\d+-[a-z0-9-]+$`,
-	"foodnetwork.com":       `^/recipes/[a-z0-9-/]+-recipe-\d+$`,
-	"allrecipes.com":        `^/recipe/\d+/[a-z0-9-]+/?$`,
-	"simplyrecipes.com":     `^/(?:recipes/[a-z0-9_-]+/?|[a-z0-9-]+-recipe-\d+)$`,
-	"eatingwell.com":        `^/recipe/\d+/[a-z0-9-]+/?$`,
+	// Food52 uses two permalink shapes today:
+	//   /recipes/89601-cosmopolitan-from-scratch  (numeric-id prefix)
+	//   /recipes/sarah-fennel-s-best-lunch-lady-brownie-recipe  (slug only, 4+ parts)
+	// Category pages like /recipes/dessert, /recipes/chicken, /recipes/quick-and-easy
+	// also live under /recipes/ — the goat ranker filters those out via Recipe
+	// JSON-LD validation, so the URL pattern just needs to admit candidates.
+	"food52.com":        `^/recipes/(?:\d+-[a-z0-9-]+|[a-z0-9]+(?:-[a-z0-9]+){2,})$`,
+	"foodnetwork.com":   `^/recipes/[a-z0-9-/]+-recipe-\d+$`,
+	"allrecipes.com":    `^/recipe/\d+/[a-z0-9-]+/?$`,
+	"simplyrecipes.com": `^/(?:recipes/[a-z0-9_-]+/?|[a-z0-9-]+-recipe-\d+)$`,
+	"eatingwell.com":    `^/recipe/\d+/[a-z0-9-]+/?$`,
 }
 
 func init() {

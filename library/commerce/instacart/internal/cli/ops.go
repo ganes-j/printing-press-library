@@ -24,8 +24,9 @@ func newOpsCmd() *cobra.Command {
 
 func newOpsListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "Show all persisted GraphQL operations known to the CLI",
+		Use:         "list",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Show all persisted GraphQL operations known to the CLI",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := newAppContext(cmd)
 			if err != nil {

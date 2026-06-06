@@ -1,13 +1,41 @@
 ---
 name: pp-instacart
 description: "Printing Press CLI for Instacart. Natural-language Instacart CLI that talks directly to the web GraphQL API. Add items to your cart, search products, and manage carts across retailers without browser automation. Also caches your purchase history locally so 'add' resolves items you have bought before instead of guessing from live search. Trigger phrases: 'install instacart', 'use instacart', 'run instacart', 'add X to my Safeway cart', 'what did I buy last time', 'order the usual', 'add my regulars to Costco', 'backfill my instacart history', 'sync my instacart orders', 'download my order history', 'save my instacart history locally'."
+author: "Matt Van Horn"
+license: "Apache-2.0"
 argument-hint: "<command> [args] | install cli|mcp | backfill"
 allowed-tools: "Read Bash WebFetch"
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - instacart-pp-cli
+    install:
+      - kind: go
+        bins: [instacart-pp-cli]
+        module: github.com/mvanhorn/printing-press-library/library/commerce/instacart/cmd/instacart-pp-cli
 ---
 
 # Instacart - Printing Press CLI
 
-Natural-language Instacart CLI that talks directly to the web GraphQL API. Add items to your cart, search products, and manage carts across retailers without browser automation. Caches your purchase history locally so `add` resolves items you have bought before instead of picking whatever live search ranks first.
+## Prerequisites: Install the CLI
+
+This skill drives the `instacart-pp-cli` binary. **You must verify the CLI is installed before invoking any command from this skill.** If it is missing, install it first:
+
+1. Install via the Printing Press installer. It defaults binaries to `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows:
+   ```bash
+   npx -y @mvanhorn/printing-press-library install instacart --cli-only
+   ```
+2. Verify: `instacart-pp-cli --version`
+3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
+
+If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.3 or newer):
+
+```bash
+go install github.com/mvanhorn/printing-press-library/library/commerce/instacart/cmd/instacart-pp-cli@latest
+```
+
+If `--version` reports "command not found" after install, the runtime cannot see the binary directory on `$PATH`. Do not proceed with skill commands until verification succeeds.
 
 ## When to Use This CLI
 
@@ -154,6 +182,34 @@ instacart auth import-file <path>
 
 Session lives at `~/.config/instacart/session.json` (0600).
 
+## Location Setup
+
+Instacart's GraphQL API requires location data (`latitude`/`longitude` or an `address_id`) on every retailer lookup. Without it, `search`, `add`, and `cart show` fail at the `ShopCollectionScoped` bootstrap step.
+
+The post-`auth login` step auto-populates `address_id`, `postal_code`, `latitude`, and `longitude` from your default Instacart address. If that doesn't work, the agent should fall back to one of:
+
+- `instacart config set-address --id <uuid>` — derives coords from a known Instacart address ID via the cached `GetAddressById` op. Find the ID in the URL or a graphql variable on https://www.instacart.com/store/account/your-account (DevTools Network tab).
+- `instacart config set-coords --lat <N> --lon <N> [--postal <zip>]` — pass coordinates directly (Google Maps right-click → "What's here?" returns lat/lon).
+- `instacart config show` — confirm what's currently set.
+
+`instacart doctor` surfaces a `location: fail` check whenever this is missing, so an agent driving the CLI can detect the broken state before invoking a real command.
+
+### Multiple addresses (named profiles)
+
+`config profiles` is a named-address store on top of the single active-location config. Use it when the user has more than one delivery address (home, work, vacation house) and wants to switch without re-running `config set-address` each time.
+
+- `instacart config profiles list` — show saved profiles; the active one is marked with `*`.
+- `instacart config profiles add <name> --id <address_id> [--label "..."] [--use]` — save a profile by Instacart address ID (uses `GetAddressById` to fill coords). Pass `--use` to also activate it.
+- `instacart config profiles add <name> --lat <N> --lon <N> [--postal <zip>] [--label "..."]` — save a profile by raw coordinates, no network call.
+- `instacart config profiles use <name>` — switch the active profile (copies its location onto the top-level config keys so every downstream call uses it).
+- `instacart config profiles show <name>` — print one profile.
+- `instacart config profiles rm <name>` — delete a profile. If it was active, the active profile is cleared and the existing top-level config still applies.
+- `instacart config profiles import [--prefix <p>] [--overwrite] [--use <name>]` — fetch every saved address from the user's Instacart account (via `CurrentUserAddresses`) and save each as a profile, slugifying the street address for the name.
+
+Per-call override: pass `--profile <name>` to any command that needs location (e.g. `instacart --profile work add safeway "cold brew"`). This applies the named profile for that single call without changing the active profile.
+
+When no profiles are defined, the CLI behaves exactly as before — `config set-coords` / `set-address` / `show` continue to drive the top-level location keys directly.
+
 ## Agent Mode
 
 The CLI is agent-native by default. Pass `--json` on any command for machine-readable output. `--dry-run` previews `add` without firing the mutation and surfaces which resolver (`history`, `live`, or `item-id`) would have fired.
@@ -229,16 +285,6 @@ Error surfaces worth translating for the user:
 - Extractor `cache_key_missing` on every order -> Instacart rotated their web bundle. Report the observed cache keys and point at the rotation-recovery section of the walkthrough doc.
 - Dumper reports fewer IDs than the user expected -> probably on a multi-profile account; ensure the selected profile is the one with purchase history.
 - `history import` shows 0 orders imported -> the JSONL is empty (only skip records). Re-run the extractor loop with fresh tabs.
-
-## CLI Installation
-
-```bash
-go install github.com/mvanhorn/printing-press-library/library/commerce/instacart/cmd/instacart-pp-cli@latest
-instacart-pp-cli --version
-```
-
-Ensure `$HOME/go/bin` is on `$PATH`.
-
 ## Direct Use
 
 1. Check installed: `which instacart-pp-cli`

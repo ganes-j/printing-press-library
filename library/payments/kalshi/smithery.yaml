@@ -1,8 +1,0 @@
-name: kalshi-trade-manual-pp-mcp
-description: kalshi-trade-manual API
-startCommand:
-    command: go run ./cmd/kalshi-trade-manual-pp-mcp
-env:
-    KALSHI_TRADE_MANUAL_KALSHI_ACCESS_KEY:
-        description: kalshi-trade-manual API credential
-        required: true

@@ -1,176 +1,160 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
-	"time"
+	"strconv"
+	"strings"
 
+	"github.com/mvanhorn/printing-press-library/library/media-and-entertainment/hackernews/internal/cliutil"
 	"github.com/spf13/cobra"
 )
 
+// controversial ranks current top stories by a comment-to-point
+// ratio. The Firebase API doesn't expose this; pulse and search
+// return hits but neither ranks by dissent. The interesting threshold
+// is stories with > some-comments-per-point — pure ranking gets
+// noisy from low-engagement items, so we let the user set a floor.
+//
+// Implementation: fetch top N IDs, fan-out fetch each item, rank in
+// memory. We pull the *current* front page rather than the synced
+// store so the command works without a sync step.
+
+type controversialRow struct {
+	ID          string  `json:"id"`
+	Title       string  `json:"title"`
+	URL         string  `json:"url"`
+	Score       int     `json:"score"`
+	Descendants int     `json:"descendants"`
+	Ratio       float64 `json:"ratio"`
+}
+
 func newControversialCmd(flags *rootFlags) *cobra.Command {
-	var flagSince string
-	var flagLimit int
-	var flagMinComments int
+	var limit int
+	var minComments int
+	var minScore int
+	var window string
 
 	cmd := &cobra.Command{
 		Use:   "controversial",
-		Short: "Find heated discussions — stories with high comment-to-point ratios",
-		Example: `  # Most controversial stories right now
-  hackernews-pp-cli controversial
+		Short: "Find stories with the highest comment-to-point ratio (polarizing discussions)",
+		Long: `Rank locally synced stories by descendants/score.
 
-  # Last 24 hours
-  hackernews-pp-cli controversial --since 24h
+A high ratio implies many comments relative to upvotes — usually a
+contentious topic. The default floor of 25 comments and 10 points
+filters out drive-by submissions; lower or raise as needed.
 
-  # Require at least 50 comments
-  hackernews-pp-cli controversial --min-comments 50
-
-  # JSON output
-  hackernews-pp-cli controversial --json`,
+Use --window to limit to recently-posted stories (e.g. --window 7d skips
+items older than 7 days).`,
+		Example: strings.Trim(`
+  hackernews-pp-cli controversial --limit 10
+  hackernews-pp-cli controversial --min-comments 100 --json
+  hackernews-pp-cli controversial --window 7d --json
+`, "\n"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var hits []map[string]any
-
-			if flagSince != "" {
-				// Use Algolia for time-windowed search
-				dur, err := parseDuration(flagSince)
-				if err != nil {
-					return usageErr(err)
-				}
-				ts := sinceTimestamp(dur)
-				params := map[string]string{
-					"tags":           "story",
-					"numericFilters": fmt.Sprintf("created_at_i>%d,num_comments>10", ts),
-					"hitsPerPage":    "200",
-				}
-				data, err := algoliaGet("/search_by_date", params)
-				if err != nil {
-					return apiErr(err)
-				}
-				var parseErr error
-				hits, parseErr = algoliaHits(data)
-				if parseErr != nil {
-					return apiErr(parseErr)
-				}
-			} else {
-				// Fetch top and best stories from Firebase, then get details
-				c, err := flags.newClient()
-				if err != nil {
-					return err
-				}
-
-				if flags.dryRun {
-					return nil
-				}
-
-				// Get top stories
-				topData, err := c.Get("/topstories.json", nil)
-				if err != nil {
-					return classifyAPIError(err)
-				}
-				var topIDs []int
-				if err := json.Unmarshal(topData, &topIDs); err != nil {
-					return apiErr(fmt.Errorf("parsing top stories: %w", err))
-				}
-
-				// Limit fetching
-				fetchLimit := 100
-				if len(topIDs) > fetchLimit {
-					topIDs = topIDs[:fetchLimit]
-				}
-
-				fmt.Fprintf(cmd.ErrOrStderr(), "Fetching %d stories for controversy analysis...\n", len(topIDs))
-
-				items, err := fetchFirebaseItems(flags, topIDs, fetchLimit)
-				if err != nil {
-					return apiErr(err)
-				}
-
-				for _, item := range items {
-					hit := map[string]any{
-						"title":        getString(item, "title"),
-						"url":          getString(item, "url"),
-						"points":       getInt(item, "score"),
-						"num_comments": getInt(item, "descendants"),
-						"objectID":     fmt.Sprintf("%d", getInt(item, "id")),
-						"created_at_i": getInt(item, "time"),
-						"author":       getString(item, "by"),
-					}
-					hits = append(hits, hit)
-				}
-			}
-
-			// Filter minimum comments
-			minComments := flagMinComments
-			if minComments == 0 {
-				minComments = 10
-			}
-			var filtered []map[string]any
-			for _, h := range hits {
-				if getInt(h, "num_comments") >= minComments {
-					filtered = append(filtered, h)
-				}
-			}
-			hits = filtered
-
-			// Compute controversy ratio and sort
-			sort.Slice(hits, func(i, j int) bool {
-				pi := getInt(hits[i], "points")
-				ci := getInt(hits[i], "num_comments")
-				pj := getInt(hits[j], "points")
-				cj := getInt(hits[j], "num_comments")
-				ri := float64(ci) / float64(max(pi, 1))
-				rj := float64(cj) / float64(max(pj, 1))
-				return ri > rj
-			})
-
-			if flagLimit > 0 && len(hits) > flagLimit {
-				hits = hits[:flagLimit]
-			}
-
-			if len(hits) == 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "No controversial stories found\n")
+			if dryRunOK(flags) {
 				return nil
 			}
-
-			fmt.Fprintf(cmd.ErrOrStderr(), "%d controversial stories\n", len(hits))
-
-			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
-				// Add controversy ratio to output
-				for _, h := range hits {
-					p := getInt(h, "points")
-					c := getInt(h, "num_comments")
-					h["controversy_ratio"] = float64(c) / float64(max(p, 1))
-				}
-				return outputJSON(cmd, flags, hits)
+			c, err := flags.newClient()
+			if err != nil {
+				return err
+			}
+			// Fetch the top N IDs.
+			rawList, err := c.Get("/topstories.json", nil)
+			if err != nil {
+				return apiErr(err)
+			}
+			var ids []int
+			if jerr := json.Unmarshal(rawList, &ids); jerr != nil {
+				return apiErr(fmt.Errorf("parsing top stories list: %w", jerr))
+			}
+			if len(ids) > 100 {
+				ids = ids[:100]
 			}
 
-			rows := make([][]string, 0, len(hits))
-			for i, h := range hits {
-				p := getInt(h, "points")
-				c := getInt(h, "num_comments")
-				ratio := float64(c) / float64(max(p, 1))
-				age := ""
-				t := getInt(h, "created_at_i")
-				if t > 0 {
-					age = timeAgo(time.Unix(int64(t), 0))
+			// Fan-out fetch each item.
+			results, _ := cliutil.FanoutRun(
+				context.Background(),
+				toStringIDs(ids),
+				func(s string) string { return s },
+				func(ctx context.Context, id string) (json.RawMessage, error) {
+					return c.Get("/item/"+id+".json", nil)
+				},
+				cliutil.WithConcurrency(8),
+			)
+
+			// Optional --window cutoff: skip items older than the duration.
+			var minTime int64 = 0
+			if window != "" {
+				cutoff, derr := parseSinceDuration(window)
+				if derr != nil {
+					return fmt.Errorf("invalid --window %q: %w", window, derr)
 				}
-				rows = append(rows, []string{
-					fmt.Sprintf("%d", i+1),
-					truncate(getString(h, "title"), 45),
-					fmt.Sprintf("%d", p),
-					fmt.Sprintf("%d", c),
-					fmt.Sprintf("%.1f", ratio),
-					age,
+				minTime = cutoff.Unix()
+			}
+
+			out := []controversialRow{}
+			for _, r := range results {
+				obj := map[string]any{}
+				if jerr := json.Unmarshal(r.Value, &obj); jerr != nil {
+					continue
+				}
+				score, _ := obj["score"].(float64)
+				desc, _ := obj["descendants"].(float64)
+				if int(score) < minScore || int(desc) < minComments {
+					continue
+				}
+				if minTime > 0 {
+					t, _ := obj["time"].(float64)
+					if int64(t) < minTime {
+						continue
+					}
+				}
+				ratio := 0.0
+				if score > 0 {
+					ratio = desc / score
+				}
+				idVal, _ := obj["id"].(float64)
+				out = append(out, controversialRow{
+					ID:          fmt.Sprintf("%d", int64(idVal)),
+					Title:       stringOrEmpty(obj["title"]),
+					URL:         stringOrEmpty(obj["url"]),
+					Score:       int(score),
+					Descendants: int(desc),
+					Ratio:       ratio,
 				})
 			}
-			return flags.printTable(cmd, []string{"#", "TITLE", "PTS", "CMTS", "RATIO", "AGE"}, rows)
+			sort.Slice(out, func(i, j int) bool { return out[i].Ratio > out[j].Ratio })
+			if len(out) > limit {
+				out = out[:limit]
+			}
+
+			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
+				j, _ := json.MarshalIndent(out, "", "  ")
+				return printOutput(cmd.OutOrStdout(), j, true)
+			}
+			if len(out) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "no stories match — try lowering --min-comments or run sync first")
+				return nil
+			}
+			tableRows := make([][]string, 0, len(out))
+			for _, r := range out {
+				tableRows = append(tableRows, []string{
+					r.ID,
+					strconv.Itoa(r.Descendants),
+					strconv.Itoa(r.Score),
+					strconv.FormatFloat(r.Ratio, 'f', 2, 64),
+					truncateAtRune(r.Title, 70),
+				})
+			}
+			return flags.printTable(cmd, []string{"ID", "CMTS", "PTS", "RATIO", "TITLE"}, tableRows)
 		},
 	}
-
-	cmd.Flags().StringVar(&flagSince, "since", "", "Time window (e.g., 24h, 7d)")
-	cmd.Flags().IntVar(&flagLimit, "limit", 20, "Maximum stories to show")
-	cmd.Flags().IntVar(&flagMinComments, "min-comments", 10, "Minimum comments to consider")
-
+	cmd.Flags().IntVar(&limit, "limit", 10, "Maximum results to return")
+	cmd.Flags().IntVar(&minComments, "min-comments", 25, "Floor on descendants count to avoid drive-by submissions")
+	cmd.Flags().IntVar(&minScore, "min-score", 10, "Floor on points to avoid divide-by-zero noise")
+	cmd.Flags().StringVar(&window, "window", "", "Only include stories from this recent duration (e.g., 7d, 24h, 12h, 30d)")
 	return cmd
 }

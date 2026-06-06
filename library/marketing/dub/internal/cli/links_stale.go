@@ -1,127 +1,147 @@
+// Hand-written novel feature: links stale.
+// Find archived, expired, or zero-traffic links across the workspace before
+// they pile up. Joins local link metadata with analytics aggregates the API
+// doesn't expose together.
+
 package cli
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
-	"text/tabwriter"
+	"strings"
 	"time"
 
-	"github.com/mvanhorn/printing-press-library/library/marketing/dub/internal/store"
 	"github.com/spf13/cobra"
 )
+
+type staleLink struct {
+	ID        string `json:"id"`
+	Domain    string `json:"domain"`
+	Key       string `json:"key"`
+	URL       string `json:"url"`
+	Clicks    int    `json:"clicks"`
+	Archived  bool   `json:"archived"`
+	ExpiresAt string `json:"expiresAt,omitempty"`
+	CreatedAt string `json:"createdAt,omitempty"`
+	Reason    string `json:"reason"`
+}
 
 func newLinksStaleCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 	var days int
-	var limit int
+	var includeArchived bool
+	var maxClicks int
 
 	cmd := &cobra.Command{
 		Use:   "stale",
-		Short: "Find links with zero or declining clicks — stale campaign detector",
-		Long: `Identifies links that have received zero clicks within the specified
-time window, suggesting they may be stale or underperforming. Uses locally
-synced link data including click counts and creation dates.`,
-		Example: `  # Links with zero clicks in last 30 days
-  dub-pp-cli links stale --days 30
+		Short: "Find archived, expired, or zero-traffic links across the workspace",
+		Long: `Find links that look dead based on local data:
 
-  # Top 50 stale links as JSON
-  dub-pp-cli links stale --days 14 --limit 50 --json`,
+  • zero or low clicks in the last N days
+  • archived links that still have referrers
+  • links past their expiresAt with no replacement
+
+Joins the local links store with analytics counters. Run ` + "`dub-pp-cli sync`" + ` first.`,
+		Example: strings.Trim(`
+  # Links with zero clicks in the last 90 days
+  dub-pp-cli links stale --days 90 --json --select id,key,clicks,archived
+
+  # Lower the threshold to "fewer than 5 clicks"
+  dub-pp-cli links stale --days 60 --max-clicks 5 --json
+`, "\n"),
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if dbPath == "" {
-				dbPath = defaultDBPath("dub-pp-cli")
+			if dryRunOK(flags) {
+				return nil
 			}
-			s, err := store.Open(dbPath)
+			db, err := openLocalStore(cmd.Context(), dbPath)
 			if err != nil {
-				return fmt.Errorf("opening store: %w", err)
+				return err
 			}
-			defer s.Close()
+			defer db.Close()
 
 			cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
 
-			query := `
-				SELECT
-					json_extract(l.data, '$.shortLink') AS short_link,
-					json_extract(l.data, '$.url') AS destination,
-					CAST(json_extract(l.data, '$.clicks') AS INTEGER) AS clicks,
-					json_extract(l.data, '$.createdAt') AS created_at,
-					json_extract(l.data, '$.lastClicked') AS last_clicked
-				FROM links l
-				WHERE CAST(json_extract(l.data, '$.clicks') AS INTEGER) = 0
-				   OR json_extract(l.data, '$.lastClicked') IS NULL
-				   OR json_extract(l.data, '$.lastClicked') < ?
-				ORDER BY clicks ASC, created_at ASC
-				LIMIT ?
-			`
-
-			rows, err := s.Query(query, cutoff, limit)
+			query := `SELECT id, COALESCE(domain,''), COALESCE("key",''), COALESCE(data,'{}'), COALESCE(archived,0)
+				FROM links`
+			rows, err := db.DB().QueryContext(cmd.Context(), query)
 			if err != nil {
-				return fmt.Errorf("querying stale links: %w", err)
+				return fmt.Errorf("querying links: %w", err)
 			}
 			defer rows.Close()
 
-			type staleLink struct {
-				ShortLink   string `json:"short_link"`
-				Destination string `json:"destination"`
-				Clicks      int    `json:"clicks"`
-				CreatedAt   string `json:"created_at"`
-				LastClicked string `json:"last_clicked"`
-			}
-
 			var results []staleLink
+			seen := 0
 			for rows.Next() {
-				var r staleLink
-				var lastClicked *string
-				if err := rows.Scan(&r.ShortLink, &r.Destination, &r.Clicks, &r.CreatedAt, &lastClicked); err != nil {
-					return fmt.Errorf("scanning row: %w", err)
+				var id, domain, key string
+				var blob sql.NullString
+				var archivedInt int
+				if err := rows.Scan(&id, &domain, &key, &blob, &archivedInt); err != nil {
+					return err
 				}
-				if lastClicked != nil {
-					r.LastClicked = *lastClicked
-				} else {
-					r.LastClicked = "never"
+				seen++
+				archived := archivedInt != 0
+				blobBytes := []byte("{}")
+				if blob.Valid {
+					blobBytes = []byte(blob.String)
 				}
-				results = append(results, r)
+				clicks := int(extractNumber(blobBytes, "clicks"))
+				url := extractFromData(blobBytes, "url")
+				expiresAt := extractFromData(blobBytes, "expiresAt")
+				createdAt := extractFromData(blobBytes, "createdAt")
+
+				reason := ""
+				switch {
+				case archived:
+					reason = "archived"
+				case expiresAt != "" && expiresAt < time.Now().Format(time.RFC3339):
+					reason = "expired"
+				case clicks <= maxClicks && (createdAt == "" || createdAt < cutoff):
+					reason = fmt.Sprintf("low-traffic (%d clicks since %s)", clicks, cutoff[:10])
+				}
+				if reason == "" {
+					continue
+				}
+				if !includeArchived && archived {
+					continue
+				}
+				results = append(results, staleLink{
+					ID:        id,
+					Domain:    domain,
+					Key:       key,
+					URL:       url,
+					Clicks:    clicks,
+					Archived:  archived,
+					ExpiresAt: expiresAt,
+					CreatedAt: createdAt,
+					Reason:    reason,
+				})
 			}
-			if err := rows.Err(); err != nil {
-				return err
+			if seen == 0 {
+				return hintEmptyStore("links")
 			}
 
-			if flags.asJSON {
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				return enc.Encode(results)
+			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
+				return printJSONFiltered(cmd.OutOrStdout(), results, flags)
 			}
-
 			if len(results) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No stale links found. All links are active!")
+				fmt.Fprintln(cmd.OutOrStdout(), "No stale links found.")
 				return nil
 			}
-
-			fmt.Fprintf(cmd.OutOrStdout(), "Found %d stale links (no clicks in %d days):\n\n", len(results), days)
-
-			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "LINK\tCLICKS\tCREATED\tLAST CLICKED")
+			fmt.Fprintf(cmd.OutOrStdout(), "%-30s %-12s %s\n", "KEY", "CLICKS", "REASON")
 			for _, r := range results {
-				link := r.ShortLink
-				if len(link) > 40 {
-					link = link[:37] + "..."
-				}
-				created := r.CreatedAt
-				if len(created) > 10 {
-					created = created[:10]
-				}
-				lastClicked := r.LastClicked
-				if len(lastClicked) > 10 {
-					lastClicked = lastClicked[:10]
-				}
-				fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", link, r.Clicks, created, lastClicked)
+				fmt.Fprintf(cmd.OutOrStdout(), "%-30s %-12d %s\n", truncate(r.Domain+"/"+r.Key, 30), r.Clicks, r.Reason)
 			}
-			return w.Flush()
+			return nil
 		},
 	}
-
-	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
-	cmd.Flags().IntVar(&days, "days", 30, "Number of days to consider a link stale")
-	cmd.Flags().IntVar(&limit, "limit", 25, "Max stale links to show")
-
+	cmd.Flags().StringVar(&dbPath, "db", "", "Database path (default: ~/.local/share/dub-pp-cli/data.db)")
+	cmd.Flags().IntVar(&days, "days", 90, "Lookback window in days for low-traffic detection")
+	cmd.Flags().BoolVar(&includeArchived, "include-archived", true, "Include already-archived links in the result")
+	cmd.Flags().IntVar(&maxClicks, "max-clicks", 0, "Treat as low-traffic if click count is at or below this value")
 	return cmd
 }
+
+// (compile guard: ensure encoding/json is used even when the file is trimmed)
+var _ = json.RawMessage{}

@@ -1,148 +1,152 @@
 # Recipe Goat CLI
 
-**Find the best version of any recipe across curated cuisine-authority sites — then plan, shop, and cook with a local kitchen companion.**
+Recipe GOAT — find the best version of any recipe across 37 trusted sites, with offline cookbook, pantry match, substitution lookup, meal planning, and USDA-backed nutrition.
 
-Recipe GOAT aggregates a curated set of independent, cuisine-authoritative recipe sites — Nagi (RecipeTin Eats), Swasthi (Indian Healthy Recipes), Elaine (China Sichuan Food), The Woks of Life, Just One Cookbook, Sally's Baking Addiction, King Arthur Baking, Budget Bytes, BBC Food, and more — ranks results by merged trust + rating + review-count signals, and builds a local SQLite cookbook that powers pantry match, cook log, meal plans, and aisle-grouped shopping lists. When users paste URLs from bot-detection-gated sites (allrecipes, food52, etc.), archive.org's Wayback Machine is used to recover the content. Unique commands like `goat` (best-version ranker), `sub` (cross-site substitution aggregation), `tonight` (decision-fatigue killer), and `cookbook match --have` (pantry match) solve problems no single recipe site can.
+Created by [@tmchow](https://github.com/tmchow) (Trevin Chow).
 
 ## Install
 
-### Go
+The recommended path installs both the `recipe-goat-pp-cli` binary and the `pp-recipe-goat` agent skill (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and other agents supported by the upstream [`skills`](https://github.com/vercel-labs/skills) CLI) in one shot:
 
+```bash
+npx -y @mvanhorn/printing-press-library install recipe-goat
 ```
-go install github.com/mvanhorn/printing-press-library/library/food-and-dining/recipe-goat-pp-cli/cmd/recipe-goat-pp-cli@latest
+
+For CLI only (no skill):
+
+```bash
+npx -y @mvanhorn/printing-press-library install recipe-goat --cli-only
 ```
 
-### Binary
+For skill only — installs the skill into the same agents as the default command above, but skips the CLI binary (use this to update or reinstall just the skill):
 
-Download from [Releases](https://github.com/mvanhorn/printing-press-library/releases).
+```bash
+npx -y @mvanhorn/printing-press-library install recipe-goat --skill-only
+```
 
-## Optional: USDA API Key (nutrition backfill)
+To constrain the skill install to one or more specific agents (repeatable — agent names match the [`skills`](https://github.com/vercel-labs/skills) CLI):
 
-**All core commands work without any setup.** The API key below is only needed to unlock one feature: nutrition backfill when a recipe site omits macros.
+```bash
+npx -y @mvanhorn/printing-press-library install recipe-goat --agent claude-code
+npx -y @mvanhorn/printing-press-library install recipe-goat --agent claude-code --agent codex
+```
 
-### What the key unlocks
+### Without Node (Go fallback)
 
-`recipe get <url> --nutrition` computes per-serving calories/protein/carbs/fat from USDA FoodData Central when the source recipe doesn't publish them. Useful because roughly 30% of recipes across the supported sites omit nutrition. Without the key you'll see `[nutrition source: site]` when it's published, or `[nutrition source: unavailable]` when it's not.
+If `npx` isn't available (no Node, offline), install the CLI directly via Go (requires Go 1.26.3 or newer):
 
-### Get a key (free, 1 minute)
+```bash
+go install github.com/mvanhorn/printing-press-library/library/food-and-dining/recipe-goat/cmd/recipe-goat-pp-cli@latest
+```
 
-1. Sign up at https://fdc.nal.usda.gov/api-key-signup — no payment required, 3,500 requests/hour quota.
-2. Copy the key from the confirmation email.
-3. Export it:
-   ```bash
-   export USDA_FDC_API_KEY=<your-key>
-   ```
-   Or persist it with `recipe-goat-pp-cli auth set-token <your-key>`.
+This installs the CLI only — no skill.
 
-Verify with `recipe-goat-pp-cli doctor` — Auth should show `INFO Auth: optional — not configured` before you set the key, and `OK Auth: configured` after.
+### Pre-built binary
+
+Download a pre-built binary for your platform from the [latest release](https://github.com/mvanhorn/printing-press-library/releases/tag/recipe-goat-current). On macOS, clear the Gatekeeper quarantine: `xattr -d com.apple.quarantine <binary>`. On Unix, mark it executable: `chmod +x <binary>`.
+
+<!-- pp-hermes-install-anchor -->
+## Install for Hermes
+
+Install the CLI binary first. The installer writes binaries to a per-user managed bin directory by default: `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows.
+
+```bash
+npx -y @mvanhorn/printing-press-library install recipe-goat --cli-only
+```
+
+Then install the focused Hermes skill.
+
+From the Hermes CLI:
+
+```bash
+hermes skills install mvanhorn/printing-press-library/cli-skills/pp-recipe-goat --force
+```
+
+Inside a Hermes chat session:
+
+```bash
+/skills install mvanhorn/printing-press-library/cli-skills/pp-recipe-goat --force
+```
+
+Restart the Hermes session or gateway if the newly installed skill is not visible immediately.
+
+## Install for OpenClaw
+
+Install both the CLI binary and the focused OpenClaw skill. The installer defaults binaries to a per-user bin directory (`$HOME/.local/bin` on macOS/Linux, `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows):
+
+```bash
+npx -y @mvanhorn/printing-press-library install recipe-goat --agent openclaw
+```
+
+Restart the OpenClaw session or gateway if the newly installed skill is not visible immediately.
+
+## Use with Claude Desktop
+
+This CLI ships an [MCPB](https://github.com/modelcontextprotocol/mcpb) bundle — Claude Desktop's standard format for one-click MCP extension installs (no JSON config required).
+
+To install:
+
+1. Download the `.mcpb` for your platform from the [latest release](https://github.com/mvanhorn/printing-press-library/releases/tag/recipe-goat-current).
+2. Double-click the `.mcpb` file. Claude Desktop opens and walks you through the install.
+3. Fill in `USDA_FDC_API_KEY` when Claude Desktop prompts you.
+
+Requires Claude Desktop 1.0.0 or later. Pre-built bundles ship for macOS Apple Silicon (`darwin-arm64`) and Windows (`amd64`, `arm64`); for other platforms, use the manual config below.
+
+<details>
+<summary>Manual JSON config (advanced)</summary>
+
+If you can't use the MCPB bundle (older Claude Desktop, unsupported platform), install the MCP binary and configure it manually.
+
+```bash
+go install github.com/mvanhorn/printing-press-library/library/other/recipe-goat/cmd/recipe-goat-pp-mcp@latest
+```
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "recipe-goat": {
+      "command": "recipe-goat-pp-mcp",
+      "env": {
+        "USDA_FDC_API_KEY": "<your-key>"
+      }
+    }
+  }
+}
+```
+
+</details>
 
 ## Quick Start
 
+### 1. Install
+
+See [Install](#install) above.
+
+### 2. Set Up Credentials
+
+Get your API key from your API provider's developer portal. The key typically looks like a long alphanumeric string.
+
 ```bash
-# Verify USDA key and per-site reachability
-recipe-goat-pp-cli doctor
-
-
-# Rank the best version across the curated corpus
-recipe-goat-pp-cli goat "chicken tikka masala" --limit 5
-
-
-# Save to your local cookbook
-recipe-goat-pp-cli save https://www.seriouseats.com/the-best-chicken-tikka-masala-recipe
-
-
-# What can I make tonight?
-recipe-goat-pp-cli cookbook match --have "chicken,rice,tomato" --missing-max 2
-
-
-# Out of buttermilk — what works in cakes?
-recipe-goat-pp-cli sub buttermilk --context baking
-
-
-# Pick dinner in 2 seconds
-recipe-goat-pp-cli tonight --max-time 30m --kid-friendly
-
+export USDA_FDC_API_KEY="<paste-your-key>"
 ```
 
-## Unique Features
+You can also persist this in your config file at `~/.config/recipe-goat-pp-cli/config.toml`.
 
-These capabilities aren't available in any other tool for this API.
+### 3. Verify Setup
 
-### Cross-site intelligence
+```bash
+recipe-goat-pp-cli doctor
+```
 
-- **`goat`** — Query any dish across curated recipe sites and rank results by normalized rating × review count × site trust × recency.
+This checks your configuration and credentials.
 
-  _Use this when you need the single best version of a dish — the agent gets structured results with provenance and trust signals instead of guessing from a web search._
+### 4. Try Your First Command
 
-  ```bash
-  recipe-goat-pp-cli goat "chicken tikka masala" --limit 5 --json
-  ```
-- **`sub`** — Aggregate ingredient substitutions from King Arthur Baking and other trusted baking-science sources. Ranked by source trust with ratios and context.
-
-  _When a recipe needs a sub, agents can pick the best one given the cooking context (baking vs marinade) instead of suggesting the first hit on Google._
-
-  ```bash
-  recipe-goat-pp-cli sub buttermilk --context baking
-  ```
-- **`recipe reviews`** — Surface the top modifications cooks actually made to a recipe ("added an egg: 22 cooks; baked 5 min less: 17; honey instead of sugar: 14").
-
-  _Agents give the user the collective wisdom of reviewers instead of just star ratings._
-
-  ```bash
-  recipe-goat-pp-cli recipe reviews <id> --limit 10
-  ```
-- **`recipe get --nutrition`** — When a site omits nutrition, parse ingredients, match USDA FoodData Central IDs, compute per-serving macros locally.
-
-  _Agents can answer 'is this recipe high-protein?' reliably even when the source doesn't publish macros._
-
-  ```bash
-  recipe-goat-pp-cli recipe get https://www.budgetbytes.com/creamy-mushroom-pasta/ --nutrition
-  ```
-- **`recipe get (auto)`** — Flag out-of-season ingredients inline ("⚠ asparagus is out of season in November — peak April–June") and suggest in-season swaps.
-
-  _Agents surface cost + quality signals the user wouldn't otherwise see._
-
-  ```bash
-  recipe-goat-pp-cli recipe get <url>  # seasonal flag appears automatically
-  ```
-
-### Local state that compounds
-
-- **`cookbook match`** — Find recipes in the local cookbook that you can make right now with listed ingredients, or with ≤N missing ingredients.
-
-  _When the user says 'what can I make with what's in my fridge,' the agent gets ranked candidates with missing-ingredient counts instead of guessing._
-
-  ```bash
-  recipe-goat-pp-cli cookbook match --have "chicken,rice,broccoli" --missing-max 2
-  ```
-- **`tonight`** — Pick dinner in 2 seconds: filter cookbook by time budget, recency from cook log, and dietary/kid-friendly flags.
-
-  _Ends the 20-minute 'what are we having' debate with three data-backed candidates._
-
-  ```bash
-  recipe-goat-pp-cli tonight --max-time 30m --no-repeat-within 7d --kid-friendly
-  ```
-- **`search --kid-friendly`** — Filter recipes against an editable ingredient-exclusion list (capers, anchovies, excess heat, raw fish, etc.). Personalizable per-child.
-
-  _Parents get results actually edible by their kids, not marketing's idea of 'kid-friendly'._
-
-  ```bash
-  recipe-goat-pp-cli search "chicken dinner" --kid-friendly --limit 10
-  ```
-- **`meal-plan shopping-list`** — Aggregate ingredients across planned meals, reconcile units (2 cup + 1 cup milk → 3 cup), group by grocery aisle.
-
-  _The agent hands the user a complete shopping list ready for grocery day, aisle-grouped._
-
-  ```bash
-  recipe-goat-pp-cli meal-plan shopping-list --week --export md
-  ```
-- **`recipe cost`** — Rough cost per serving using Budget Bytes line-item data plus USDA retail averages as fallback. Always shows an honesty band (±30%).
-
-  _Agents can triage recipes by rough cost without pretending to precision grocery data doesn't provide._
-
-  ```bash
-  recipe-goat-pp-cli recipe cost <id>  # output: '$6–$9 for 4 servings (±30%)'
-  ```
+```bash
+recipe-goat-pp-cli foods list
+```
 
 ## Usage
 
@@ -157,7 +161,6 @@ USDA FoodData Central — ingredient nutrition lookups
 - **`recipe-goat-pp-cli foods get`** - Get a specific food by FDC ID
 - **`recipe-goat-pp-cli foods list`** - List foods paginated
 - **`recipe-goat-pp-cli foods search`** - Search USDA FoodData Central for foods matching a query
-
 
 ## Output Formats
 
@@ -186,41 +189,11 @@ This CLI is designed for AI agent consumption:
 - **Pipeable** - `--json` output to stdout, errors to stderr
 - **Filterable** - `--select id,name` returns only fields you need
 - **Previewable** - `--dry-run` shows the request without sending
-- **Retryable** - creates return "already exists" on retry, deletes return "already deleted"
-- **Confirmable** - `--yes` for explicit confirmation of destructive actions
-- **Piped input** - `echo '{"key":"value"}' | recipe-goat-pp-cli <resource> create --stdin`
-- **Cacheable** - GET responses cached for 5 minutes, bypass with `--no-cache`
+- **Read-only by default** - this CLI does not create, update, delete, publish, send, or mutate remote resources
+- **Offline-friendly** - sync/search commands can use the local SQLite store when available
 - **Agent-safe by default** - no colors or formatting unless `--human-friendly` is set
-- **Progress events** - paginated commands emit NDJSON events to stderr in default mode
 
 Exit codes: `0` success, `2` usage error, `3` not found, `4` auth error, `5` API error, `7` rate limited, `10` config error.
-
-## Use as MCP Server
-
-This CLI ships a companion MCP server for use with Claude Desktop, Cursor, and other MCP-compatible tools.
-
-### Claude Code
-
-```bash
-claude mcp add recipe-goat recipe-goat-pp-mcp -e USDA_FDC_API_KEY=<your-key>
-```
-
-### Claude Desktop
-
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "recipe-goat": {
-      "command": "recipe-goat-pp-mcp",
-      "env": {
-        "USDA_FDC_API_KEY": "<your-key>"
-      }
-    }
-  }
-}
-```
 
 ## Health Check
 
@@ -238,48 +211,17 @@ Environment variables:
 - `USDA_FDC_API_KEY`
 
 ## Troubleshooting
-
 **Authentication errors (exit code 4)**
 - Run `recipe-goat-pp-cli doctor` to check credentials
 - Verify the environment variable is set: `echo $USDA_FDC_API_KEY`
-
 **Not found errors (exit code 3)**
 - Check the resource ID is correct
 - Run the `list` command to see available items
 
-**Rate limit errors (exit code 7)**
-- The CLI auto-retries with exponential backoff
-- If persistent, wait a few minutes and try again
+## HTTP Transport
 
-### API-specific
-
-- **HTTP 402 or 403 on AllRecipes / Simply Recipes / EatingWell / Food52 / FoodNetwork fetches** — These sites serve Cloudflare/Akamai bot-detection challenges to non-browser clients and are not in the default `goat` fan-out. When you paste a URL from one of them into `recipe get`, the CLI automatically falls back to archive.org's Wayback Machine and prints `warn: archive fallback: <url>` on stderr so you know the content came from an archived snapshot rather than live.
-- **HTTP 403 on Serious Eats fetches** — Still in the default corpus but intermittently Akamai-gated. Run `recipe-goat-pp-cli doctor` to see current reachability; your `goat` ranking still ranks across reachable sites.
-- **Nutrition missing or marked `[source: site]` with obviously wrong numbers** — Pass `--nutrition` to force USDA backfill. Requires USDA_FDC_API_KEY. Mark suspect recipes with `cookbook tag <id> nutrition-suspect`.
-- **`goat` query returns nothing** — Check `--site` filter if set. Try broader terms. Use `search --debug` to see per-site fetch attempts and which sites fell back to cache or failed.
-- **Shopping list has duplicate entries with different units** — Run `cookbook ingredients canonicalize` to re-run the parser. If an ingredient consistently fails, add to `~/.config/recipe-goat-pp-cli/ingredient-aliases.toml`.
+This CLI uses Chrome-compatible HTTP transport for browser-facing endpoints. It does not require a resident browser process for normal API calls.
 
 ---
 
-## Sources & Inspiration
-
-This CLI was built by studying these projects and resources:
-
-- [**Mealie**](https://github.com/mealie-recipes/mealie) — Python (11500 stars)
-- [**Tandoor Recipes**](https://github.com/TandoorRecipes/recipes) — Python (7200 stars)
-- [**hhursev/recipe-scrapers**](https://github.com/hhursev/recipe-scrapers) — Python (2100 stars)
-- [**KitchenOwl**](https://github.com/TomBursch/kitchenowl) — Dart (1700 stars)
-- [**Cooklang**](https://github.com/cooklang/cookcli) — Rust (580 stars)
-- [**python-allrecipes**](https://github.com/remaudcorentin-dev/python-allrecipes) — Python (20 stars)
-- [**marcon29/CLI-dinner-finder-grocery-list**](https://github.com/marcon29/CLI-dinner-finder-grocery-list) — Ruby (5 stars)
-
 Generated by [CLI Printing Press](https://github.com/mvanhorn/cli-printing-press)
-
-<!-- pr-218-features -->
-## Agent workflow features
-
-This CLI was patched to add these agent-workflow capabilities (see [`printing-press patch`](https://github.com/mvanhorn/cli-printing-press/pull/221)):
-
-- **Named profiles** — save a set of flags under a name and reuse them: `recipe-goat-pp-cli profile save <name> --<flag> <value>`, then `recipe-goat-pp-cli --profile <name> <command>`. Flag precedence: explicit flag > env var > profile > default.
-- **`--deliver`** — route command output to a sink other than stdout. Values: `file:<path>` writes atomically via tmp+rename; `webhook:<url>` POSTs as JSON (or NDJSON with `--compact`).
-- **`feedback`** — record in-band feedback about the CLI. Entries append as JSON lines to `~/.recipe-goat-pp-cli/feedback.jsonl`. When `RECIPE_GOAT_FEEDBACK_ENDPOINT` is set and either `--send` is passed or `RECIPE_GOAT_FEEDBACK_AUTO_SEND=true`, the entry is also POSTed upstream.

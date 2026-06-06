@@ -16,9 +16,11 @@ import (
 func newTrustCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "trust",
-		Short:   "View and override site trust scores (ranking integration wip)",
+		Short:   "View and override per-site trust scores used by the cross-site ranker",
 		Example: "  recipe-goat-pp-cli trust list",
 	}
+	cmd.AddCommand(newTrustListCmd(flags))
+	cmd.AddCommand(newTrustSetCmd(flags))
 	cmd.AddCommand(newTrustListCmd(flags))
 	cmd.AddCommand(newTrustSetCmd(flags))
 	return cmd
@@ -26,9 +28,10 @@ func newTrustCmd(flags *rootFlags) *cobra.Command {
 
 func newTrustListCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:     "list",
-		Short:   "List site trust scores",
-		Example: "  recipe-goat-pp-cli trust list",
+		Use:         "list",
+		Short:       "List the current per-site trust scores (built-ins plus any local overrides)",
+		Example:     "  recipe-goat-pp-cli trust list",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flags.asJSON {
 				payload := map[string]any{
@@ -95,7 +98,7 @@ func saveTrust(t trustOverrides) error {
 func newTrustSetCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:     "set <site> <delta>",
-		Short:   "Persist a site trust override (ranking integration wip)",
+		Short:   "Save a local per-site trust adjustment that the ranker applies on top of the built-in scores",
 		Example: "  recipe-goat-pp-cli trust set seriouseats.com +2",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

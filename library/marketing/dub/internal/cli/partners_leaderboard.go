@@ -1,137 +1,169 @@
+// Hand-written novel feature: partners leaderboard.
+// Rank partners by commission earned, conversion rate, and clicks generated.
+
 package cli
 
 import (
-	"encoding/json"
+	"database/sql"
 	"fmt"
-	"text/tabwriter"
+	"strings"
 
-	"github.com/mvanhorn/printing-press-library/library/marketing/dub/internal/store"
 	"github.com/spf13/cobra"
 )
 
+type leaderRow struct {
+	PartnerID   string  `json:"partnerId"`
+	Email       string  `json:"email,omitempty"`
+	Status      string  `json:"status,omitempty"`
+	Clicks      float64 `json:"clicks,omitempty"`
+	Leads       float64 `json:"leads,omitempty"`
+	Sales       float64 `json:"sales,omitempty"`
+	Commission  float64 `json:"commissionTotal"`
+	PayoutTotal float64 `json:"payoutTotal"`
+	Currency    string  `json:"currency,omitempty"`
+}
+
 func newPartnersLeaderboardCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
-	var limit int
-	var sortBy string
+	var byMetric string
+	var top int
 
 	cmd := &cobra.Command{
 		Use:   "leaderboard",
-		Short: "Rank partners by commission earned and conversion performance",
-		Long: `Ranks partners by their earnings, conversion rates, and click volume.
-Joins partners, commissions, and link data locally to produce a cross-partner
-comparison that no single API call provides.`,
-		Example: `  # Partner leaderboard
-  dub-pp-cli partners leaderboard
+		Short: "Rank partners by commission earned, conversion rate, and clicks generated",
+		Long: `Joins partners × commissions × payouts locally to rank partners by the
+chosen metric. Per-partner ROI accurate to the latest sync.
 
-  # Top 10 by earnings as JSON
-  dub-pp-cli partners leaderboard --limit 10 --sort earnings --json`,
+Use ` + "`--by commission`" + ` (default), ` + "`--by clicks`" + `, ` + "`--by leads`" + `, or ` + "`--by sales`" + `.`,
+		Example: strings.Trim(`
+  dub-pp-cli partners leaderboard --by commission --top 10 --json
+  dub-pp-cli partners leaderboard --by clicks --top 25 --json
+`, "\n"),
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if dbPath == "" {
-				dbPath = defaultDBPath("dub-pp-cli")
+			if dryRunOK(flags) {
+				return nil
 			}
-			s, err := store.Open(dbPath)
+			db, err := openLocalStore(cmd.Context(), dbPath)
 			if err != nil {
-				return fmt.Errorf("opening store: %w", err)
+				return err
 			}
-			defer s.Close()
-
-			orderCol := "total_earnings"
-			switch sortBy {
-			case "clicks":
-				orderCol = "clicks"
-			case "sales":
-				orderCol = "sales"
-			case "commissions":
-				orderCol = "commission_count"
-			case "name":
-				orderCol = "partner_name"
-			}
-
-			query := fmt.Sprintf(`
-				SELECT
-					p.id,
-					json_extract(p.data, '$.name') AS partner_name,
-					json_extract(p.data, '$.email') AS partner_email,
-					COALESCE(json_extract(p.data, '$.status'), 'active') AS status,
-					COALESCE((
-						SELECT COUNT(*) FROM commissions c
-						WHERE json_extract(c.data, '$.partnerId') = p.id
-					), 0) AS commission_count,
-					COALESCE((
-						SELECT SUM(CAST(json_extract(c.data, '$.amount') AS REAL))
-						FROM commissions c
-						WHERE json_extract(c.data, '$.partnerId') = p.id
-					), 0) AS total_earnings,
-					COALESCE(CAST(json_extract(p.data, '$.clicks') AS INTEGER), 0) AS clicks,
-					COALESCE(CAST(json_extract(p.data, '$.leads') AS INTEGER), 0) AS leads,
-					COALESCE(CAST(json_extract(p.data, '$.sales') AS INTEGER), 0) AS sales
-				FROM partners p
-				ORDER BY %s DESC
-				LIMIT ?
-			`, orderCol)
-
-			rows, err := s.Query(query, limit)
+			defer db.Close()
+			rows, err := db.DB().QueryContext(cmd.Context(), `
+				SELECT id, COALESCE(email,''), COALESCE(status,''), COALESCE(data,'{}')
+				FROM partners
+			`)
 			if err != nil {
-				return fmt.Errorf("querying leaderboard: %w", err)
+				return fmt.Errorf("querying partners: %w", err)
 			}
 			defer rows.Close()
 
-			type partnerRank struct {
-				ID              string  `json:"id"`
-				Name            string  `json:"name"`
-				Email           string  `json:"email"`
-				Status          string  `json:"status"`
-				CommissionCount int     `json:"commission_count"`
-				TotalEarnings   float64 `json:"total_earnings"`
-				Clicks          int     `json:"clicks"`
-				Leads           int     `json:"leads"`
-				Sales           int     `json:"sales"`
-			}
-
-			var results []partnerRank
+			byID := map[string]*leaderRow{}
+			seen := 0
 			for rows.Next() {
-				var r partnerRank
-				if err := rows.Scan(&r.ID, &r.Name, &r.Email, &r.Status, &r.CommissionCount, &r.TotalEarnings, &r.Clicks, &r.Leads, &r.Sales); err != nil {
-					return fmt.Errorf("scanning row: %w", err)
+				var id, email, status string
+				var blob sql.NullString
+				if err := rows.Scan(&id, &email, &status, &blob); err != nil {
+					return err
 				}
-				results = append(results, r)
+				seen++
+				blobBytes := []byte(blob.String)
+				if !blob.Valid {
+					blobBytes = []byte("{}")
+				}
+				lr := &leaderRow{
+					PartnerID: id,
+					Email:     email,
+					Status:    status,
+					Clicks:    extractNumber(blobBytes, "clicks"),
+					Leads:     extractNumber(blobBytes, "leads"),
+					Sales:     extractNumber(blobBytes, "sales"),
+				}
+				byID[id] = lr
 			}
-			if err := rows.Err(); err != nil {
-				return err
+			if seen == 0 {
+				return hintEmptyStore("partners")
 			}
 
-			if flags.asJSON {
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				return enc.Encode(results)
+			// Sum commissions per partner.
+			rows2, err := db.DB().QueryContext(cmd.Context(), `
+				SELECT COALESCE(partner_id,''), COALESCE(amount,0), COALESCE(currency,'')
+				FROM commissions
+			`)
+			if err == nil {
+				for rows2.Next() {
+					var pid, currency string
+					var amount float64
+					if err := rows2.Scan(&pid, &amount, &currency); err == nil {
+						if lr, ok := byID[pid]; ok {
+							lr.Commission += amount
+							if lr.Currency == "" {
+								lr.Currency = currency
+							}
+						}
+					}
+				}
+				rows2.Close()
 			}
 
-			if len(results) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No partner data. Run 'sync --full' to populate.")
-				return nil
+			// Sum payouts per partner.
+			rows3, err := db.DB().QueryContext(cmd.Context(), `
+				SELECT COALESCE(partner_id,''), COALESCE(data,'{}')
+				FROM payouts
+			`)
+			if err == nil {
+				for rows3.Next() {
+					var pid string
+					var blob sql.NullString
+					if err := rows3.Scan(&pid, &blob); err == nil {
+						if lr, ok := byID[pid]; ok && blob.Valid {
+							lr.PayoutTotal += extractNumber([]byte(blob.String), "amount")
+						}
+					}
+				}
+				rows3.Close()
 			}
 
-			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "#\tPARTNER\tSTATUS\tCLICKS\tLEADS\tSALES\tCOMMISSIONS\tEARNINGS")
-			for i, r := range results {
-				name := r.Name
-				if name == "" {
-					name = r.Email
-				}
-				if len(name) > 25 {
-					name = name[:22] + "..."
-				}
-				fmt.Fprintf(w, "%d\t%s\t%s\t%d\t%d\t%d\t%d\t$%.2f\n",
-					i+1, name, r.Status, r.Clicks, r.Leads, r.Sales,
-					r.CommissionCount, r.TotalEarnings/100)
+			var results []leaderRow
+			for _, lr := range byID {
+				results = append(results, *lr)
 			}
-			return w.Flush()
+			less := func(a, b leaderRow) bool {
+				switch strings.ToLower(byMetric) {
+				case "clicks":
+					return a.Clicks > b.Clicks
+				case "leads":
+					return a.Leads > b.Leads
+				case "sales":
+					return a.Sales > b.Sales
+				default:
+					return a.Commission > b.Commission
+				}
+			}
+			for i := 0; i < len(results); i++ {
+				for j := i + 1; j < len(results); j++ {
+					if less(results[j], results[i]) {
+						results[i], results[j] = results[j], results[i]
+					}
+				}
+			}
+			if top > 0 && len(results) > top {
+				results = results[:top]
+			}
+			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
+				return printJSONFiltered(cmd.OutOrStdout(), results, flags)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%-30s %-12s %-10s %-10s %-10s %-12s\n",
+				"PARTNER", "STATUS", "CLICKS", "LEADS", "SALES", "COMMISSION")
+			for _, r := range results {
+				fmt.Fprintf(cmd.OutOrStdout(), "%-30s %-12s %-10.0f %-10.0f %-10.0f %-12.2f\n",
+					truncate(r.Email, 30), r.Status, r.Clicks, r.Leads, r.Sales, r.Commission)
+			}
+			return nil
 		},
 	}
-
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
-	cmd.Flags().IntVar(&limit, "limit", 25, "Max partners to show")
-	cmd.Flags().StringVar(&sortBy, "sort", "earnings", "Sort by: earnings, clicks, sales, commissions, name")
-
+	cmd.Flags().StringVar(&byMetric, "by", "commission", "Sort metric: commission, clicks, leads, sales")
+	cmd.Flags().IntVar(&top, "top", 10, "Number of partners to return (0 = all)")
 	return cmd
 }

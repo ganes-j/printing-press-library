@@ -16,9 +16,10 @@ func newTodayCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
 	var jsonOut bool
 	cmd := &cobra.Command{
-		Use:   "today",
-		Short: "Show your issues for today across all teams",
-		Long:  "Display all issues assigned to you in active cycles, sorted by priority. Requires a prior sync.",
+		Use:         "today",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Show your issues for today across all teams",
+		Long:        "Display all issues assigned to you in active cycles, sorted by priority. Requires a prior sync.",
 		Example: `  linear-pp-cli today
   linear-pp-cli today --json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -83,15 +84,28 @@ func newTodayCmd(flags *rootFlags) *cobra.Command {
 				return active[i].Identifier < active[j].Identifier
 			})
 
+			if len(active) == 0 {
+				if !hintIfUnsynced(cmd, db, "issues") {
+					hintIfStale(cmd, db, "issues", flags.maxAge)
+					if jsonOut {
+						enc := json.NewEncoder(os.Stdout)
+						enc.SetIndent("", "  ")
+						return enc.Encode(active)
+					}
+					fmt.Println("No active issues assigned to you. Nice!")
+				} else if jsonOut {
+					enc := json.NewEncoder(os.Stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(active)
+				}
+				return nil
+			}
+			hintIfStale(cmd, db, "issues", flags.maxAge)
+
 			if jsonOut {
 				enc := json.NewEncoder(os.Stdout)
 				enc.SetIndent("", "  ")
 				return enc.Encode(active)
-			}
-
-			if len(active) == 0 {
-				fmt.Println("No active issues assigned to you. Nice!")
-				return nil
 			}
 
 			fmt.Printf("%-12s %-4s %-15s %-10s %s\n", "ID", "PRI", "STATE", "TEAM", "TITLE")

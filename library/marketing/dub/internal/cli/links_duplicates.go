@@ -1,109 +1,134 @@
+// Hand-written novel feature: links duplicates.
+// Find every link in the workspace pointing to the same destination URL.
+
 package cli
 
 import (
-	"encoding/json"
+	"database/sql"
 	"fmt"
-	"text/tabwriter"
+	"strings"
 
-	"github.com/mvanhorn/printing-press-library/library/marketing/dub/internal/store"
 	"github.com/spf13/cobra"
 )
 
+type dupGroup struct {
+	URL   string         `json:"url"`
+	Count int            `json:"count"`
+	Links []dupLinkEntry `json:"links"`
+}
+
+type dupLinkEntry struct {
+	ID     string `json:"id"`
+	Domain string `json:"domain"`
+	Key    string `json:"key"`
+	Clicks int    `json:"clicks"`
+}
+
 func newLinksDuplicatesCmd(flags *rootFlags) *cobra.Command {
 	var dbPath string
-	var limit int
+	var minCount int
+	var ignoreCase bool
 
 	cmd := &cobra.Command{
 		Use:   "duplicates",
-		Short: "Find links pointing to the same destination URL",
-		Long: `Scans locally synced links for duplicate destination URLs. Multiple
-short links pointing to the same destination waste link budget and split
-analytics. Helps identify consolidation opportunities.`,
-		Example: `  # Find duplicate links
-  dub-pp-cli links duplicates
+		Short: "Find every link in the workspace pointing to the same destination URL",
+		Long: `Group local links by their normalized destination URL and surface
+groups with two or more entries — the consolidation candidates.
 
-  # As JSON
-  dub-pp-cli links duplicates --json`,
+Useful after bulk-create overruns or when migrating UTMs and you want to
+audit overlap before deleting.`,
+		Example: strings.Trim(`
+  # Default: groups of 2+ duplicates
+  dub-pp-cli links duplicates --json
+
+  # Tighter: only groups of 5+ (campaign-wide overlap)
+  dub-pp-cli links duplicates --min-count 5 --json
+`, "\n"),
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if dbPath == "" {
-				dbPath = defaultDBPath("dub-pp-cli")
+			if dryRunOK(flags) {
+				return nil
 			}
-			s, err := store.Open(dbPath)
+			db, err := openLocalStore(cmd.Context(), dbPath)
 			if err != nil {
-				return fmt.Errorf("opening store: %w", err)
+				return err
 			}
-			defer s.Close()
+			defer db.Close()
 
-			query := `
-				SELECT
-					json_extract(l.data, '$.url') AS destination,
-					COUNT(*) AS link_count,
-					GROUP_CONCAT(json_extract(l.data, '$.shortLink'), ', ') AS short_links,
-					SUM(CAST(json_extract(l.data, '$.clicks') AS INTEGER)) AS total_clicks
-				FROM links l
-				GROUP BY json_extract(l.data, '$.url')
-				HAVING link_count > 1
-				ORDER BY link_count DESC
-				LIMIT ?
-			`
-
-			rows, err := s.Query(query, limit)
+			rows, err := db.DB().QueryContext(cmd.Context(), `
+				SELECT id, COALESCE(domain,''), COALESCE("key",''), COALESCE(data,'{}')
+				FROM links
+			`)
 			if err != nil {
-				return fmt.Errorf("querying duplicates: %w", err)
+				return fmt.Errorf("querying links: %w", err)
 			}
 			defer rows.Close()
 
-			type dupGroup struct {
-				Destination string `json:"destination"`
-				LinkCount   int    `json:"link_count"`
-				ShortLinks  string `json:"short_links"`
-				TotalClicks int    `json:"total_clicks"`
+			groups := map[string][]dupLinkEntry{}
+			seen := 0
+			for rows.Next() {
+				var id, domain, key string
+				var blob sql.NullString
+				if err := rows.Scan(&id, &domain, &key, &blob); err != nil {
+					return err
+				}
+				seen++
+				blobBytes := []byte(blob.String)
+				if !blob.Valid {
+					blobBytes = []byte("{}")
+				}
+				url := extractFromData(blobBytes, "url")
+				if url == "" {
+					continue
+				}
+				bucket := url
+				if ignoreCase {
+					bucket = strings.ToLower(url)
+				}
+				groups[bucket] = append(groups[bucket], dupLinkEntry{
+					ID:     id,
+					Domain: domain,
+					Key:    key,
+					Clicks: int(extractNumber(blobBytes, "clicks")),
+				})
+			}
+			if seen == 0 {
+				return hintEmptyStore("links")
 			}
 
 			var results []dupGroup
-			for rows.Next() {
-				var r dupGroup
-				if err := rows.Scan(&r.Destination, &r.LinkCount, &r.ShortLinks, &r.TotalClicks); err != nil {
-					return fmt.Errorf("scanning row: %w", err)
+			for url, entries := range groups {
+				if len(entries) < minCount {
+					continue
 				}
-				results = append(results, r)
+				results = append(results, dupGroup{URL: url, Count: len(entries), Links: entries})
 			}
-			if err := rows.Err(); err != nil {
-				return err
+			// Sort largest groups first, then by url.
+			for i := 0; i < len(results); i++ {
+				for j := i + 1; j < len(results); j++ {
+					if results[j].Count > results[i].Count ||
+						(results[j].Count == results[i].Count && results[j].URL < results[i].URL) {
+						results[i], results[j] = results[j], results[i]
+					}
+				}
 			}
 
-			if flags.asJSON {
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				return enc.Encode(results)
+			if flags.asJSON || !isTerminal(cmd.OutOrStdout()) {
+				return printJSONFiltered(cmd.OutOrStdout(), results, flags)
 			}
-
 			if len(results) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No duplicate links found.")
+				fmt.Fprintln(cmd.OutOrStdout(), "No duplicate destinations found.")
 				return nil
 			}
-
-			fmt.Fprintf(cmd.OutOrStdout(), "Found %d destination URLs with multiple short links:\n\n", len(results))
-
-			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(w, "DESTINATION\tDUPLICATES\tTOTAL CLICKS\tSHORT LINKS")
-			for _, r := range results {
-				dest := r.Destination
-				if len(dest) > 50 {
-					dest = dest[:47] + "..."
-				}
-				links := r.ShortLinks
-				if len(links) > 50 {
-					links = links[:47] + "..."
-				}
-				fmt.Fprintf(w, "%s\t%d\t%d\t%s\n", dest, r.LinkCount, r.TotalClicks, links)
+			fmt.Fprintf(cmd.OutOrStdout(), "%-6s %s\n", "COUNT", "URL")
+			for _, g := range results {
+				fmt.Fprintf(cmd.OutOrStdout(), "%-6d %s\n", g.Count, truncate(g.URL, 90))
 			}
-			return w.Flush()
+			return nil
 		},
 	}
-
 	cmd.Flags().StringVar(&dbPath, "db", "", "Database path")
-	cmd.Flags().IntVar(&limit, "limit", 25, "Max duplicate groups to show")
-
+	cmd.Flags().IntVar(&minCount, "min-count", 2, "Minimum group size to report")
+	cmd.Flags().BoolVar(&ignoreCase, "ignore-case", false, "Compare URLs case-insensitively")
 	return cmd
 }

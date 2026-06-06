@@ -617,7 +617,7 @@ Tap model: `~/.pp/taps/mvanhorn-printing-press-library/` is a git clone. `ppl ta
 - Happy path (per CLI): tag `<cli>/v<x>` -> GH Release + tap PR + NPM publish + registry PR -> `brew install`, `npx`, and `ppl install` all succeed for that CLI.
 - Edge case: a CLI whose binary name differs from its registry name (dominos-pp-cli) -> workflow picks the correct archive, formula file is `dominos-pp-cli.rb`, NPM package is `@printing-press/dominos-pp-cli`.
 - Edge case: a CLI with both `<cli>-pp-cli` and `<cli>-pp-mcp` binaries -> brew formula installs both into `bin/`, NPM ships both binaries in the platform package.
-- Error path: a CLI fails goreleaser build (e.g. broken smithery.yaml) -> other CLIs in the same wave are unaffected; that CLI blocks until fixed; release log records the failure.
+- Error path: a CLI fails goreleaser build (e.g. broken go.mod or compile error) -> other CLIs in the same wave are unaffected; that CLI blocks until fixed; release log records the failure.
 - Integration: `/ppl install espn cli` on a machine with `ppl` on PATH -> skill delegates to `ppl install espn`, prints the same outcome as before.
 - Integration: `/ppl install espn cli` on a machine without `ppl` -> skill falls back to `go install` path and still works.
 

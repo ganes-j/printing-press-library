@@ -6,27 +6,83 @@ Bypass paywalls and look up web archives via archive.today. Looks up existing sn
 
 > **About archive.today:** On February 21, 2026, Wikipedia formally blacklisted archive.today after evidence of DDoS activity and snapshot tampering. This CLI is intended for personal paywall reading. Do NOT use it for legal evidence, academic citation, or anything requiring a trustworthy archive — use the Wayback Machine for that. This CLI ships with Wayback as a built-in fallback backend for that reason.
 
+Created by [@mvanhorn](https://github.com/mvanhorn) (Matt Van Horn).
+
 ## Install
 
-### Go
-
-```
-go install github.com/mvanhorn/printing-press-library/other/archive-is/cmd/archive-is-pp-cli@latest
-```
-
-### Binary
-
-Download from [Releases](https://github.com/mvanhorn/printing-press-library/releases).
-
-### Authentication
-
-archive.today has no official API and requires no credentials. Just run the CLI:
+The recommended path installs both the `archive-is-pp-cli` binary and the `pp-archive-is` agent skill (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and other agents supported by the upstream [`skills`](https://github.com/vercel-labs/skills) CLI) in one shot:
 
 ```bash
-archive-is-pp-cli read https://www.nytimes.com/2026/04/10/article
+npx -y @mvanhorn/printing-press-library install archive-is
 ```
 
-For self-hosted or mirror override, set `ARCHIVE_IS_BASE_URL` (see [Configuration](#configuration)).
+For CLI only (no skill):
+
+```bash
+npx -y @mvanhorn/printing-press-library install archive-is --cli-only
+```
+
+For skill only — installs the skill into the same agents as the default command above, but skips the CLI binary (use this to update or reinstall just the skill):
+
+```bash
+npx -y @mvanhorn/printing-press-library install archive-is --skill-only
+```
+
+To constrain the skill install to one or more specific agents (repeatable — agent names match the [`skills`](https://github.com/vercel-labs/skills) CLI):
+
+```bash
+npx -y @mvanhorn/printing-press-library install archive-is --agent claude-code
+npx -y @mvanhorn/printing-press-library install archive-is --agent claude-code --agent codex
+```
+
+### Without Node (Go fallback)
+
+If `npx` isn't available (no Node, offline), install the CLI directly via Go (requires Go 1.26.3 or newer):
+
+```bash
+go install github.com/mvanhorn/printing-press-library/library/media-and-entertainment/archive-is/cmd/archive-is-pp-cli@latest
+```
+
+This installs the CLI only — no skill.
+
+### Pre-built binary
+
+Download a pre-built binary for your platform from the [latest release](https://github.com/mvanhorn/printing-press-library/releases/tag/archive-is-current). On macOS, clear the Gatekeeper quarantine: `xattr -d com.apple.quarantine <binary>`. On Unix, mark it executable: `chmod +x <binary>`.
+
+<!-- pp-hermes-install-anchor -->
+## Install for Hermes
+
+Install the CLI binary first. The installer writes binaries to a per-user managed bin directory by default: `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows.
+
+```bash
+npx -y @mvanhorn/printing-press-library install archive-is --cli-only
+```
+
+Then install the focused Hermes skill.
+
+From the Hermes CLI:
+
+```bash
+hermes skills install mvanhorn/printing-press-library/cli-skills/pp-archive-is --force
+```
+
+Inside a Hermes chat session:
+
+```bash
+/skills install mvanhorn/printing-press-library/cli-skills/pp-archive-is --force
+```
+
+Restart the Hermes session or gateway if the newly installed skill is not visible immediately.
+
+## Install for OpenClaw
+
+Install both the CLI binary and the focused OpenClaw skill. The installer defaults binaries to a per-user bin directory (`$HOME/.local/bin` on macOS/Linux, `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows):
+
+```bash
+npx -y @mvanhorn/printing-press-library install archive-is --agent openclaw
+```
+
+Restart the OpenClaw session or gateway if the newly installed skill is not visible immediately.
 
 ## Quick Start
 
@@ -174,7 +230,6 @@ The six hand-built commands below are the hero features. They're optimized for o
 | `doctor` | Check configuration, auth, and API reachability. |
 | `auth` | Manage authentication tokens (archive.today needs none). |
 | `version` | Print CLI version. |
-
 
 ## Output Formats
 

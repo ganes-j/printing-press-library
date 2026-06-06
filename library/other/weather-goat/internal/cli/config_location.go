@@ -10,8 +10,9 @@ import (
 
 func newConfigCmd(flags *rootFlags) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "Manage weather CLI configuration (location, commute times)",
+		Use:         "config",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Manage weather CLI configuration (location, commute times)",
 	}
 
 	cmd.AddCommand(newSetLocationCmd(flags))
@@ -85,9 +86,10 @@ func newSetCommuteCmd(flags *rootFlags) *cobra.Command {
 
 func newShowConfigCmd(flags *rootFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:     "show",
-		Short:   "Display current configuration",
-		Example: "  weather-goat-pp-cli config show",
+		Use:         "show",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Display current configuration",
+		Example:     "  weather-goat-pp-cli config show",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(flags.configPath)
 			if err != nil {

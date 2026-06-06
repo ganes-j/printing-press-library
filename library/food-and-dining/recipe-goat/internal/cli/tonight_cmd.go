@@ -22,9 +22,10 @@ func newTonightCmd(flags *rootFlags) *cobra.Command {
 		limit       int
 	)
 	cmd := &cobra.Command{
-		Use:     "tonight",
-		Short:   "Pick dinner in 2 seconds — filter cookbook by time, recency, and tag",
-		Example: "  recipe-goat-pp-cli tonight --max-time 30m --no-repeat-within 7d --kid-friendly",
+		Use:         "tonight",
+		Short:       "Pick dinner from your saved cookbook by max cook time, recency, and dietary tags",
+		Example:     "  recipe-goat-pp-cli tonight --max-time 30m --no-repeat-within 7d --kid-friendly",
+		Annotations: map[string]string{"mcp:read-only": "true"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := openRecipeStore()
 			if err != nil {

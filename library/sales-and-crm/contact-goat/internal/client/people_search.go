@@ -1,4 +1,4 @@
-// Copyright 2026 matt-van-horn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 
 package client
 
@@ -60,6 +60,27 @@ type SearchPeopleOptions struct {
 // that Happenstance routinely takes 2-5 minutes. 60s was causing
 // frequent false failures on legitimate queries.
 const DefaultPollTimeout = 180 * time.Second
+
+// BroadQueryStuckThreshold is the elapsed-time threshold past which a
+// search whose status string still indicates the server is "Thinking"
+// is treated as a broad-query failure rather than a slow-but-progressing
+// search. Bails at 90s (half the default poll timeout) so callers see the
+// bearer-fallback hint within ~1.5 minutes instead of hanging for 4.
+const BroadQueryStuckThreshold = 90 * time.Second
+
+// ErrCookieBroadQuery signals that a cookie-surface people-search hit a
+// broad-query failure mode: the poll exceeded the timeout, the underlying
+// HTTP client deadline fired, the upstream returned 5xx, or the server's
+// status string stayed in a non-terminal "Thinking..." state past
+// BroadQueryStuckThreshold. CLI layers detect this sentinel via
+// errors.Is and surface a fallback hint pointing at --source api;
+// exit code 5 (API error) is the canonical mapping.
+//
+// Distinct from rate-limit (429) errors, which keep their own typed
+// path through APIError and map to exit code 7. The two never overlap:
+// a 429 is "you tried too much"; ErrCookieBroadQuery is "this query is
+// too broad for the cookie surface to ever finish".
+var ErrCookieBroadQuery = errors.New("happenstance cookie: broad-query failure")
 
 // defaultSearchOptions returns the zero-config behavior: 1st + 2nd
 // degree, no public, 180-second timeout, 1-second poll.
@@ -215,18 +236,18 @@ func (p Person) Tier(currentUserUUID string) RelationshipTier {
 // createSearchRequest is the POST /api/search body. Field names are
 // camelCase; the server rejects snake_case silently with 500.
 type createSearchRequest struct {
-	RequestText        string        `json:"requestText"`
-	RequestContent     []slateBlock  `json:"requestContent"`
-	RequestGroups      []string      `json:"requestGroups"`
-	ParentRequestID    *string       `json:"parentRequestId"`
-	ExcludePersonUUIDs []string      `json:"excludePersonUUIDs"`
-	SearchEveryone     bool          `json:"searchEveryone"`
-	CreditID           *string       `json:"creditId"`
+	RequestText        string       `json:"requestText"`
+	RequestContent     []slateBlock `json:"requestContent"`
+	RequestGroups      []string     `json:"requestGroups"`
+	ParentRequestID    *string      `json:"parentRequestId"`
+	ExcludePersonUUIDs []string     `json:"excludePersonUUIDs"`
+	SearchEveryone     bool         `json:"searchEveryone"`
+	CreditID           *string      `json:"creditId"`
 }
 
 type slateBlock struct {
-	Type     string         `json:"type"`
-	Children []slateInline  `json:"children"`
+	Type     string        `json:"type"`
+	Children []slateInline `json:"children"`
 }
 
 type slateInline struct {
@@ -242,12 +263,12 @@ type createSearchResponse struct {
 // /api/dynamo?requestId= endpoint returns an array with exactly one
 // element in practice.
 type dynamoEntry struct {
-	RequestID    string          `json:"request_id"`
-	RequestText  string          `json:"request_text"`
-	RequestStatus string         `json:"request_status"`
-	Completed    bool            `json:"completed"`
-	Logs         []SearchLog     `json:"logs"`
-	Results      []Person        `json:"results"`
+	RequestID     string      `json:"request_id"`
+	RequestText   string      `json:"request_text"`
+	RequestStatus string      `json:"request_status"`
+	Completed     bool        `json:"completed"`
+	Logs          []SearchLog `json:"logs"`
+	Results       []Person    `json:"results"`
 }
 
 // SearchPeopleByQuery runs a Happenstance natural-language people-search
@@ -391,8 +412,21 @@ func (c *Client) createSearch(query string, o SearchPeopleOptions) (string, erro
 // pollSearch polls /api/dynamo?requestId= until the search completes or
 // timeout fires. Returns the final dynamo entry even if the timeout
 // fired, so callers can see partial progress (with completed=false).
+//
+// Two broad-query bail-out paths produce ErrCookieBroadQuery:
+//   - Hard timeout: the configured PollTimeout elapsed without
+//     last.Completed=true.
+//   - Stuck "Thinking": elapsed exceeds BroadQueryStuckThreshold while
+//     last.RequestStatus still starts with "Thinking" (early-phase signal
+//     that the server hasn't even begun retrieval). Bails before the full
+//     timeout so the bearer-fallback hint surfaces faster.
+//
+// HTTP errors from the underlying GET (e.g. 5xx upstream timeouts) are
+// wrapped with ErrCookieBroadQuery in fetchDynamo before they reach
+// pollSearch.
 func (c *Client) pollSearch(requestID string, timeout, interval time.Duration) (*dynamoEntry, error) {
-	deadline := time.Now().Add(timeout)
+	start := time.Now()
+	deadline := start.Add(timeout)
 
 	var last dynamoEntry
 	for {
@@ -408,11 +442,14 @@ func (c *Client) pollSearch(requestID string, timeout, interval time.Duration) (
 			return &last, nil
 		}
 
+		elapsed := time.Since(start)
+		if elapsed > BroadQueryStuckThreshold && strings.HasPrefix(last.RequestStatus, "Thinking") {
+			return &last, fmt.Errorf("%w: status stuck at %q after %s (early-phase, query likely too broad for cookie surface)",
+				ErrCookieBroadQuery, last.RequestStatus, elapsed.Truncate(time.Second))
+		}
 		if time.Now().After(deadline) {
-			// Return partial result rather than the bare timeout error:
-			// callers may want to render what the server streamed so far.
-			return &last, fmt.Errorf("happenstance poll: timeout after %s waiting for requestId %s (last status: %q)",
-				timeout, requestID, last.RequestStatus)
+			return &last, fmt.Errorf("%w: poll timeout after %s waiting for requestId %s (last status: %q)",
+				ErrCookieBroadQuery, timeout, requestID, last.RequestStatus)
 		}
 		time.Sleep(interval)
 	}
@@ -421,6 +458,16 @@ func (c *Client) pollSearch(requestID string, timeout, interval time.Duration) (
 func (c *Client) fetchDynamo(requestID string) ([]dynamoEntry, error) {
 	raw, err := c.Get("/api/dynamo", map[string]string{"requestId": requestID})
 	if err != nil {
+		// 5xx upstream errors (Cloudflare 524, gateway 502/503, generic 500)
+		// during a cookie poll signal an upstream timeout on a broad query
+		// rather than a real client-side bug. Wrap with ErrCookieBroadQuery
+		// so callers can surface the bearer-fallback hint instead of just
+		// reporting the raw status code.
+		var apiE *APIError
+		if errors.As(err, &apiE) && apiE.StatusCode >= 500 && apiE.StatusCode < 600 {
+			return nil, fmt.Errorf("%w: GET /api/dynamo HTTP %d (upstream likely choked on a broad query)",
+				ErrCookieBroadQuery, apiE.StatusCode)
+		}
 		return nil, fmt.Errorf("happenstance GET /api/dynamo: %w", err)
 	}
 	var entries []dynamoEntry

@@ -1,4 +1,0 @@
-name: weather-goat-pp-mcp
-description: weather-goat API
-startCommand:
-    command: go run ./cmd/weather-goat-pp-mcp

@@ -1,4 +1,4 @@
-// Copyright 2026 matt-van-horn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 
 // Deepline subcommands: person/company search and enrich via the Deepline v2
 // API (https://code.deepline.com/). The hybrid client prefers the official
@@ -37,8 +37,9 @@ func newDeeplineCmd(flags *rootFlags) *cobra.Command {
 	dl := &deeplineFlags{}
 
 	cmd := &cobra.Command{
-		Use:   "deepline",
-		Short: "Deepline contact-data API: email, phone, and company enrichment (credit-priced)",
+		Use:         "deepline",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Deepline contact-data API: email, phone, and company enrichment (credit-priced)",
 		Long: `Call Deepline (https://code.deepline.com/) contact-data tools from the terminal.
 
 Auth: set DEEPLINE_API_KEY or pass --deepline-key. Keys start with "dlp_".
@@ -90,10 +91,8 @@ estimated cost before spending and supports --dry-run to preview the request.`,
 // resolveDeeplineKey returns the API key to use (flag wins, env fallback).
 // The value is never logged anywhere.
 func (dl *deeplineFlags) resolveKey() string {
-	if dl.apiKey != "" {
-		return dl.apiKey
-	}
-	return os.Getenv("DEEPLINE_API_KEY")
+	key, _ := resolveDeeplineKey(dl.apiKey)
+	return key
 }
 
 // deeplineExecute is the shared "estimate cost, maybe dry-run, confirm,
@@ -120,7 +119,7 @@ func deeplineExecute(cmd *cobra.Command, flags *rootFlags, dl *deeplineFlags, to
 	if err := client.ValidateKey(); err != nil {
 		logDeeplineSafely(toolID, payloadHash, cost, "auth-error")
 		if errors.Is(err, deepline.ErrMissingKey) {
-			return authErr(fmt.Errorf("%w\nhint: export DEEPLINE_API_KEY=dlp_...\n      or pass --deepline-key dlp_...", err))
+			return authErr(fmt.Errorf("%w\nhint: export DEEPLINE_API_KEY=dlp_...\n      or pass --deepline-key dlp_...\n      or run 'deepline auth status --reveal' if you've already authenticated with the Deepline CLI", err))
 		}
 		return authErr(err)
 	}
@@ -213,8 +212,9 @@ func emitDeeplineResult(cmd *cobra.Command, flags *rootFlags, result json.RawMes
 func newDeeplineFindEmailCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Command {
 	var company string
 	cmd := &cobra.Command{
-		Use:   "find-email <name>",
-		Short: "Find a person's work email from name+domain",
+		Use:         "find-email <name>",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Find a person's work email from name+domain",
 		Long: `Finds a single high-confidence work email for a person at a company using
 Deepline's dropleads_email_finder tool.
 
@@ -253,8 +253,9 @@ func newDeeplineSearchPeopleCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Comm
 	var title, location, industry string
 	var limit int
 	cmd := &cobra.Command{
-		Use:   "search-people",
-		Short: "Search Apollo for people matching title/location/industry",
+		Use:         "search-people",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Search Apollo for people matching title/location/industry",
 		Example: `  contact-goat-pp-cli deepline search-people --title "VP Engineering" --location "San Francisco" --limit 25 --yes
   contact-goat-pp-cli deepline search-people --industry fintech --limit 50 --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -287,8 +288,9 @@ func newDeeplineSearchPeopleCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Comm
 func newDeeplineEmailFindCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Command {
 	var domain string
 	cmd := &cobra.Command{
-		Use:   "email-find",
-		Short: "Find public emails for a company domain",
+		Use:         "email-find",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Find public emails for a company domain",
 		Long: `Lists public/role emails at a domain via Hunter domain search. Returns
 role-filtered company emails (e.g. contact@, press@, named-person@) with
 confidence scores and sources. For a single person's work email from
@@ -309,9 +311,10 @@ name+domain, use the find-email subcommand instead.`,
 func newDeeplinePhoneFindCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Command {
 	var linkedinURL string
 	cmd := &cobra.Command{
-		Use:     "phone-find",
-		Short:   "Find a phone number by LinkedIn URL",
-		Example: `  contact-goat-pp-cli deepline phone-find --linkedin-url https://www.linkedin.com/in/patrickcollison --yes`,
+		Use:         "phone-find",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Find a phone number by LinkedIn URL",
+		Example:     `  contact-goat-pp-cli deepline phone-find --linkedin-url https://www.linkedin.com/in/patrickcollison --yes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(linkedinURL) == "" {
 				return usageErr(fmt.Errorf("--linkedin-url is required"))
@@ -327,9 +330,10 @@ func newDeeplinePhoneFindCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Command
 func newDeeplineSearchCompaniesCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Command {
 	var industry, size, location string
 	cmd := &cobra.Command{
-		Use:     "search-companies",
-		Short:   "Search for companies by industry/size/location",
-		Example: `  contact-goat-pp-cli deepline search-companies --industry fintech --size 201-500 --location "United States" --yes`,
+		Use:         "search-companies",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Search for companies by industry/size/location",
+		Example:     `  contact-goat-pp-cli deepline search-companies --industry fintech --size 201-500 --location "United States" --yes`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload := map[string]any{}
 			if industry != "" {
@@ -429,8 +433,9 @@ Pass the payload inline as JSON, or read it from a file with @path.`,
 
 func newDeeplineCreditsCmd(flags *rootFlags, dl *deeplineFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:   "credits",
-		Short: "Show credit balance (stub: upstream endpoint not confirmed)",
+		Use:         "credits",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Show credit balance (stub: upstream endpoint not confirmed)",
 		Long: `STUB. Deepline has no confirmed credit-balance endpoint at time of writing,
 so this command always exits with an error. See https://code.deepline.com/docs/quickstart
 for upstream docs; when an endpoint is published, wire it into

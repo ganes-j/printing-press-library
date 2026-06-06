@@ -1,4 +1,4 @@
-// Copyright 2026 matt-van-horn. Licensed under Apache-2.0. See LICENSE.
+// Copyright 2026 Matt Van Horn and contributors. Licensed under Apache-2.0. See LICENSE.
 
 // prospect: fan-out search across LinkedIn + Happenstance + (optionally)
 // Deepline. Budget-gated so agents don't accidentally spend credits.
@@ -8,7 +8,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -28,8 +27,9 @@ func newProspectCmd(flags *rootFlags) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "prospect <query>",
-		Short: "Fan-out search across LinkedIn, Happenstance, and (opt-in) Deepline",
+		Use:         "prospect <query>",
+		Annotations: map[string]string{"mcp:read-only": "true"},
+		Short:       "Fan-out search across LinkedIn, Happenstance, and (opt-in) Deepline",
 		Long: `Run a single prospect query across every source simultaneously. Budget-gated:
 Deepline credits are only spent when --deepline is set AND --budget allows.
 
@@ -160,10 +160,7 @@ Results are deduped across sources and ranked by one of:
 				if budget <= 0 {
 					fmt.Fprintf(cmd.ErrOrStderr(), "warning: --deepline set but --budget=%d; Deepline skipped\n", budget)
 				} else {
-					key := deeplineKey
-					if key == "" {
-						key = os.Getenv("DEEPLINE_API_KEY")
-					}
+					key, _ := resolveDeeplineKey(deeplineKey)
 					if key == "" {
 						fmt.Fprintln(cmd.ErrOrStderr(), "warning: no Deepline API key (set DEEPLINE_API_KEY or pass --deepline-key); Deepline skipped")
 					} else if !flags.yes {
