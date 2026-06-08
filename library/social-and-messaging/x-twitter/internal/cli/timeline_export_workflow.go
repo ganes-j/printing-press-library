@@ -155,8 +155,9 @@ func localTimelineQuery(cmd *cobra.Command, dbPath, query string, limit int) ([]
 		return nil, err
 	}
 	defer db.Close()
+	pattern := sqliteLikeContainsPattern(query)
 	rows, err := db.DB().QueryContext(cmd.Context(),
-		`SELECT data FROM tweets WHERE lower(text) LIKE '%' || lower(?) || '%' ORDER BY created_at DESC LIMIT ?`, query, limit)
+		`SELECT data FROM tweets WHERE lower(text) LIKE ? ESCAPE '\' ORDER BY created_at DESC LIMIT ?`, pattern, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +174,22 @@ func localTimelineQuery(cmd *cobra.Command, dbPath, query string, limit int) ([]
 		}
 	}
 	return out, rows.Err()
+}
+
+func sqliteLikeContainsPattern(value string) string {
+	return "%" + escapeSQLiteLike(strings.ToLower(value)) + "%"
+}
+
+func escapeSQLiteLike(value string) string {
+	var b strings.Builder
+	for _, r := range value {
+		switch r {
+		case '\\', '%', '_':
+			b.WriteRune('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func writeTimelineExport(w io.Writer, result timelineExportResult, format string) error {

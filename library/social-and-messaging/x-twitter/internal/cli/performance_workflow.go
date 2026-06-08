@@ -395,12 +395,26 @@ func performanceGroupKey(dims map[string]bool, label, capturedAt string, rec *re
 		parts = append(parts, fmt.Sprintf("has_media=%t", len(rec.Media) > 0))
 	}
 	if dims["has_link"] && rec != nil {
-		parts = append(parts, fmt.Sprintf("has_link=%t", len(rec.Entities) > 0))
+		parts = append(parts, fmt.Sprintf("has_link=%t", postHasURL(rec)))
 	}
 	if len(parts) == 0 {
 		return "all"
 	}
 	return strings.Join(parts, ",")
+}
+
+func postHasURL(rec *resolvedPostRecord) bool {
+	if rec == nil || len(rec.Entities) == 0 {
+		return false
+	}
+	switch urls := rec.Entities["urls"].(type) {
+	case []any:
+		return len(urls) > 0
+	case []map[string]any:
+		return len(urls) > 0
+	default:
+		return false
+	}
 }
 
 func numericAny(v any) (float64, bool) {

@@ -141,6 +141,22 @@ func TestPerformanceSnapshotsAnalyzeAndGrouping(t *testing.T) {
 	}
 }
 
+func TestPerformanceHasLinkOnlyCountsURLEntities(t *testing.T) {
+	dims := parseIncludeSet("has_link")
+	hashtagOnly := &resolvedPostRecord{Entities: map[string]any{
+		"hashtags": []any{map[string]any{"tag": "launch"}},
+	}}
+	withURL := &resolvedPostRecord{Entities: map[string]any{
+		"urls": []any{map[string]any{"expanded_url": "https://example.com"}},
+	}}
+	if key := performanceGroupKey(dims, "", "", hashtagOnly); key != "has_link=false" {
+		t.Fatalf("hashtag-only key = %q", key)
+	}
+	if key := performanceGroupKey(dims, "", "", withURL); key != "has_link=true" {
+		t.Fatalf("url key = %q", key)
+	}
+}
+
 func TestTimelineAndBriefMarkdownWriters(t *testing.T) {
 	item := collectionItemSnapshot{TweetID: "12345", URL: "https://x.com/i/web/status/12345", Text: "hello"}
 	var timeline bytes.Buffer
@@ -156,6 +172,38 @@ func TestTimelineAndBriefMarkdownWriters(t *testing.T) {
 	}
 	if !strings.Contains(brief.String(), "Highlights") || !strings.Contains(brief.String(), "Sources") {
 		t.Fatalf("brief markdown = %s", brief.String())
+	}
+}
+
+func TestLocalTimelineQueryEscapesLikeWildcards(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "x-twitter.db")
+	db, err := store.OpenWithContext(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer db.Close()
+	cmd := testCommand()
+	rows := []struct {
+		id   string
+		text string
+	}{
+		{"1", "node_modules setup"},
+		{"2", "nodeXmodules setup"},
+	}
+	for _, row := range rows {
+		raw := `{"id":"` + row.id + `","text":"` + row.text + `","created_at":"2026-01-01T00:00:00Z"}`
+		if _, err := db.DB().ExecContext(cmd.Context(),
+			`INSERT INTO tweets(id, data, text, created_at) VALUES(?, ?, ?, ?)`,
+			row.id, raw, row.text, "2026-01-01T00:00:00Z"); err != nil {
+			t.Fatalf("insert tweet %s: %v", row.id, err)
+		}
+	}
+	records, err := localTimelineQuery(cmd, dbPath, "node_modules", 10)
+	if err != nil {
+		t.Fatalf("localTimelineQuery: %v", err)
+	}
+	if len(records) != 1 || records[0].TweetID != "1" {
+		t.Fatalf("records = %+v", records)
 	}
 }
 
