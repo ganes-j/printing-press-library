@@ -8670,6 +8670,53 @@
       }
     },
     {
+      "name": "roadside-america",
+      "category": "travel",
+      "api": "Roadside America",
+      "description": "Every offbeat roadside attraction on RoadsideAmerica.",
+      "search_terms": [
+        "roadside-america",
+        "Roadside America",
+        "roadside-america-pp-cli",
+        "Every offbeat roadside attraction on RoadsideAmerica.com — with a local SQLite cache, offline search, and superlative categories no other tool offers.",
+        "Superlative & keyword categories",
+        "category",
+        "Find the biggest, smallest, tallest, or weird-food attractions (and more) by classifying cached attractions locally.",
+        "Quirk leaderboard / rollups",
+        "stats",
+        "Summarize the local cache: counts by state and by category, plus totals.",
+        "Surprise-me",
+        "random",
+        "Pick a random offbeat attraction, optionally constrained by state or category.",
+        "Road-trip stops",
+        "trip",
+        "Collect quirky stops near a list of cities or coordinates in one call, deduped and labeled by stop.",
+        "State quirk comparison",
+        "compare",
+        "Compare two states by offbeat-attraction count and surface a few top picks from each."
+      ],
+      "path": "library/travel/roadside-america",
+      "printer": "dbryson",
+      "printer_name": "David Bryson",
+      "creator": {
+        "handle": "dbryson",
+        "name": "David Bryson"
+      },
+      "mcp": {
+        "binary": "roadside-america-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 3,
+        "public_tool_count": 3,
+        "auth_type": "none",
+        "env_vars": [],
+        "mcp_ready": "full",
+        "spec_format": "internal"
+      }
+    },
+    {
       "name": "roam",
       "category": "productivity",
       "api": "Roam HQ",
