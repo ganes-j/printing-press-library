@@ -22,12 +22,12 @@ metadata:
 
 This skill drives the `sec-edgar-pp-cli` binary. **You must verify the CLI is installed before invoking any command from this skill.** If it is missing, install it first:
 
-1. Install via the Printing Press installer:
+1. Install via the Printing Press installer. It defaults binaries to `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows:
    ```bash
    npx -y @mvanhorn/printing-press-library install sec-edgar --cli-only
    ```
 2. Verify: `sec-edgar-pp-cli --version`
-3. Ensure `$GOPATH/bin` (or `$HOME/go/bin`) is on `$PATH`.
+3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
 
 If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.3 or newer):
 
@@ -35,7 +35,7 @@ If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go in
 go install github.com/mvanhorn/printing-press-library/library/developer-tools/sec-edgar/cmd/sec-edgar-pp-cli@latest
 ```
 
-If `--version` reports "command not found" after install, the install step did not put the binary on `$PATH`. Do not proceed with skill commands until verification succeeds.
+If `--version` reports "command not found" after install, the runtime cannot see the binary directory on `$PATH`. Do not proceed with skill commands until verification succeeds.
 
 ## When to Use This CLI
 
@@ -109,6 +109,15 @@ These capabilities aren't available in any other tool for this API.
 
   ```bash
   sec-edgar-pp-cli late-filers --since 90d --form 10-K --json
+  ```
+
+### Proxy & ownership
+- **`ownership`** — Resolve a ticker, name, or CIK, find the company's latest DEF 14A proxy statement, fetch the document, and extract the "Security Ownership of Certain Beneficial Owners" section as readable text.
+
+  _The beneficial-ownership table is present under a near-identical heading in every proxy, but reaching it means chaining submissions → document fetch → HTML section extraction that no single SEC endpoint provides. Pick this when an agent needs who-owns-the-company from the proxy itself._
+
+  ```bash
+  sec-edgar-pp-cli ownership MSFT --json
   ```
 
 ## Command Reference

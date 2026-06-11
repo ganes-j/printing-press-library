@@ -5,6 +5,10 @@
   "api_name": "facebook-marketplace",
   "display_name": "Facebook Marketplace",
   "cli_name": "facebook-marketplace-pp-cli",
+  "creator": {
+    "handle": "cathrynlavery",
+    "name": "Cathryn Lavery"
+  },
   "owner": "user",
   "printer": "cathrynlavery",
   "printer_name": "Cathryn Lavery",
@@ -55,6 +59,12 @@
       "name": "Write-gated seller reply",
       "command": "reply",
       "description": "Prepare and send a seller inbox reply only when `--write` and doctor gating both pass."
+    }
+  ],
+  "contributors": [
+    {
+      "handle": "tmchow",
+      "name": "Trevin Chow"
     }
   ]
 }

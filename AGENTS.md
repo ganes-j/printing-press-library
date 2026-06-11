@@ -10,10 +10,10 @@ This repo is **the published library repo**: finished printed CLIs are copied he
 
 When deciding where a change belongs:
 
-- **A broken published CLI gets patched here first, regardless of root cause.** If a CLI on `main` is shipping a real defect — migration fails, command panics, build breaks, sync blocks — fix it in `library/<cat>/<slug>/` and record the change in `.printing-press-patches.json`. Users install from this repo; leaving the published artifact broken while an upstream change works its way through generation is not an acceptable wait. If the same defect also reproduces in other published CLIs (quick `grep` across `library/**/internal/...`), it's a genuine multi-CLI template bug — fix the generator in parallel, but the local patch still lands first.
+- **A broken published CLI gets patched here first, regardless of root cause.** If a CLI on `main` is shipping a real defect — migration fails, command panics, build breaks, sync blocks — fix it in `library/<cat>/<slug>/` and record the change in `.printing-press-patches/`. Users install from this repo; leaving the published artifact broken while an upstream change works its way through generation is not an acceptable wait. If the same defect also reproduces in other published CLIs (quick `grep` across `library/**/internal/...`), it's a genuine multi-CLI template bug — fix the generator in parallel, but the local patch still lands first.
 - **Distinguish single-CLI manifestation from multi-CLI template bug.** Template bugs that only fire under rare spec shapes (high endpoint-to-table aggregation, unusual auth flows, exotic parameter naming) can look generator-template in form but show up in exactly one CLI — those are one-off published-library repairs, not upstream work. Reserve "fix the generator" for defects that reproduce across multiple published CLIs, broken codegen for a whole spec class, or pipeline issues (dogfood, verify, MCP emission, scoring, publish, AST patch).
 - **Published catalog behavior belongs here.** Registry metadata, npm installer behavior, generated skill mirrors, per-CLI README/SKILL polish, and one-off repairs to an already-published CLI live in this repo.
-- **How to record a hand-edit.** When you patch a generated CLI in `library/`, mark each changed site with a `// PATCH(...)` source comment and add an entry to `.printing-press-patches.json` per the dedicated section below. If the fix is also generator-shaped and you have a local `cli-printing-press` checkout, make the generator change in parallel; if you do not, open or draft an upstream issue carrying the affected CLI path, the generated code pattern, the expected generator behavior, and a pointer to the patch you applied here.
+- **How to record a hand-edit.** When you patch a generated CLI in `library/`, add a `<id>.json` entry under `.printing-press-patches/` per the dedicated section below (an inline `// PATCH(...)` source comment is an optional navigation aid, not required). If the fix is also generator-shaped and you have a local `cli-printing-press` checkout, make the generator change in parallel; if you do not, open or draft an upstream issue carrying the affected CLI path, the generated code pattern, the expected generator behavior, and a pointer to the patch you applied here.
 - **Do not rerun broad generation casually from this repo.** Regeneration is owned by the generator pipeline. The `printing-press patch` workflow from the generator repo is an alternative to a hand-edit when you have a local generator checkout and the change fits its AST-patch model.
 - **When working cross-repo, obey both repos' instructions.** Start in this repo for published artifacts, switch to the local `cli-printing-press` checkout for generator changes if one is available, and keep commits scoped so generated output and generator logic are not mixed accidentally.
 - **Vulnerability gates are split by lifecycle.** The generator/publish flow in `cli-printing-press` should block newly printed CLIs on reachable `govulncheck` findings before they enter this repo. This public library keeps a clean baseline when practical, but it is a catalog of many independent CLIs — do not turn every unrelated PR into a full-library dependency-freshness campaign.
@@ -22,7 +22,7 @@ The normal flow is:
 
 1. `cli-printing-press` generates or improves a printed CLI in the local working library (`~/printing-press/library/<api-slug>/`) and archives proofs/manuscripts.
 2. Publish tooling moves the finished CLI into this repo under `library/<category>/<cli-slug>/`, with provenance in `.printing-press.json`.
-3. This repo updates `registry.json` and `cli-skills/pp-*`, and the npm installer consumes the live catalog.
+3. This repo updates per-CLI release metadata, `registry.json`, and `cli-skills/pp-*`, and the npm installer consumes the live catalog.
 
 Use this distinction in your own language: **generator repo** or **Printing Press** for `cli-printing-press`; **published library** or **catalog repo** for this repo; **local library** for the generated working-copy library, commonly `~/printing-press/library`.
 
@@ -76,12 +76,13 @@ Treat the change as a **new CLI / reprint** (subject to this rule) if any of the
 
 The following are **not** new CLI / reprint changes and are fine to land via a normal hand-authored PR from this repo:
 
-- Bug fixes or behavior tweaks in an already-published CLI's `internal/cli/*.go`, `internal/client/*.go`, etc. Record any code-level customization in `.printing-press-patches.json` per the convention below.
+- Bug fixes or behavior tweaks in an already-published CLI's `internal/cli/*.go`, `internal/client/*.go`, etc. Record any code-level customization in `.printing-press-patches/` per the convention below.
 - README/SKILL.md polish on an already-published CLI (edit `library/<cat>/<slug>/SKILL.md`, never the `cli-skills/` mirror).
 - AST-level patches via `printing-press patch` from the generator repo.
 - `tools/sweep-canonical/` runs that retrofit canonical shape across all entries.
 - CI changes under `.github/workflows/`, repo-root docs, or installer changes under `npm/`.
 - Manual edits to the generator-output files (`registry.json`, `cli-skills/pp-*/SKILL.md`) — don't; those are bot-regenerated post-merge.
+- Manual release-version bumps or changelog release entries — don't; `CHANGELOG.md`, `.printing-press-release.json`, and runtime `version` stamping are owned by the post-merge release-ledger workflow described below.
 
 ### What to do instead, when the change *is* a new CLI / reprint
 
@@ -115,13 +116,21 @@ When any of these fire, **the right move is not to fix the PR by adding more sec
 
 ### CI gates for new-CLI / reprint shape
 
-The `verify-library-conventions.yml` workflow runs `verify_publish_package.py` on every PR that touches `library/**`. For PRs that **add** a `library/<cat>/<slug>/.printing-press.json` (the classifier for new-CLI submissions), it hard-fails on missing publish artifacts (`.printing-press-patches.json`, `AGENTS.md`, `README.md`, `SKILL.md`, `go.mod`, `.goreleaser.yaml`, `LICENSE`, `NOTICE`, `cmd/<cli_name>/main.go`), missing `.manuscripts/<run-id>/{research,proofs}/`, missing `run_id` / `printer` / `printing_press_version` in the manifest, missing `novel_features`, and missing MCP artifacts (`manifest.json`, `tools-manifest.json`) when MCP is advertised. It also emits advisory notices when the PR body lacks `### Publication Path` or `### Novel Commands`. Don't try to placate the verifier file by file — if it fires, you've drifted off the publish flow; re-run the publish skill.
+The `verify-library-conventions.yml` workflow runs `verify_publish_package.py` on every PR that touches `library/**`. For PRs that **add** a `library/<cat>/<slug>/.printing-press.json` (the classifier for new-CLI submissions), it hard-fails on missing publish artifacts (the patches index — either `.printing-press-patches/` or the legacy `.printing-press-patches.json` — `AGENTS.md`, `README.md`, `SKILL.md`, `go.mod`, `.goreleaser.yaml`, `LICENSE`, `NOTICE`, `cmd/<cli_name>/main.go`), missing `.manuscripts/<run-id>/{research,proofs}/`, missing `run_id` / `printer` / `printing_press_version` in the manifest, missing `novel_features`, and missing MCP artifacts (`manifest.json`, `tools-manifest.json`) when MCP is advertised. It also emits advisory notices when the PR body lacks `### Publication Path` or `### Novel Commands`. Don't try to placate the verifier file by file — if it fires, you've drifted off the publish flow; re-run the publish skill.
 
 ## Automated code review with Greptile
 
 Every PR against this repo gets an automated review from **Greptile** alongside the verify-* workflows. Greptile posts a top-level summary comment with a **confidence score on a 0-5 scale** (5 = "Production ready", 4 = "Minor polish needed", 3 = "Implementation issues", 2 = "Significant bugs", 0-1 = "Critical problems"), plus inline comments tagged with **P0 / P1 / P2** severity (P0 = must fix before merge, P1 = should fix, P2 = consider fixing) and categorized as Logic / Syntax / Style. Status is shown via 👀 (analyzing) → 👍 (done) or 😕 (failed); Greptile does NOT use GitHub's approve / request-changes flow.
 
 **The bar is resolving every Greptile finding before merge** — the 0-5 score is a confidence signal, not a guarantee, so don't treat the number itself as the gate. 4/5 and 5/5 are both acceptable end states; the score will land in that range naturally once threads are addressed. A 5/5 with open P1s is still not ready; a 4/5 with everything resolved is ready. Treat every P0 and P1 as blocking; P2s require either a fix or a concrete reply explaining why we're deferring.
+
+Greptile feedback is not limited to GitHub review threads. It also edits top-level PR summary comments, and those summaries can contain actionable issue blocks, including `Comments Outside Diff`, even when the thread list has zero unresolved comments. Before saying a PR is ready, run the repo-owned review-state helper:
+
+```bash
+python3 .github/scripts/pr-review-state/greptile_feedback.py <PR_NUMBER>
+```
+
+`PR_NUMBER` is the GitHub pull request number, for example `1093` — not a branch name, URL, issue number, or commit SHA. The helper defaults to `mvanhorn/printing-press-library` and exits non-zero until all of these are true: Greptile Review passes, Greptile policy gate passes, there are no unresolved non-outdated review threads, the latest `greptile-apps` top-level comment reviewed the current PR head SHA, and that latest comment has no actionable markers such as `Issue 1 of`, `Fix the following`, `Comments Outside Diff`, `remaining open item`, or `Safe to merge after fixing/reviewing`.
 
 If you (an agent) opened the PR, you own driving it to ready-to-merge:
 
@@ -162,6 +171,7 @@ npm/                                — @mvanhorn/printing-press npm installer w
 
 registry.json                       — top-level catalog: every CLI's name, category, description, path, MCP metadata
 tools/generate-skills/              — regenerates cli-skills/pp-*
+tools/release-ledger/               — assigns per-CLI release versions after merges
 .github/scripts/verify-skill/       — Python verifier that checks SKILL.md matches shipped Go source
 .github/workflows/                  — CI: verify-skills.yml, generate-skills.yml
 ```
@@ -187,40 +197,95 @@ Inside any published CLI directory, `.printing-press.json` is machine-readable p
 
 Some CLIs have no archived spec on disk (docs-driven, sniff-driven, plan-driven). Tooling that assumes `spec.json` exists breaks on those — check before reading.
 
-## `.printing-press-patches.json` records library-side customizations
+## Per-CLI release ledger: changelog, release manifest, runtime version
 
-If you modify a published CLI under `library/<cat>/<slug>/` beyond what the generator produced, **catalog the change in `.printing-press-patches.json`** at the CLI's root (parallel to `.printing-press.json`). SKILL.md / README.md edits are owned by `tools/sweep-canonical/` or direct edit and don't need a patch manifest; this convention is for code-level customizations.
+Each published CLI has its own release history because users install one CLI at a time from this repo. The release identity is intentionally distinct from `.printing-press.json`'s `printing_press_version`: the former answers "which published version of this CLI do I have?", while the latter answers "which generator binary produced the base artifact?"
 
-Minimum shape:
+Release versions use `YYYY.M.N`, where `N` is the release count for that CLI within the month. Example: if `x-twitter` gets three library releases in June 2026, the third is `2026.6.3`. The value is not a date and does not require a day component.
+
+Do not ask contributors or agents to manually bump release versions. After a PR lands on `main`, `.github/workflows/update-cli-release-ledger.yml` runs `tools/release-ledger/` against the changed CLI directories and commits:
+
+- `library/<category>/<slug>/.printing-press-release.json` — current release metadata, PR/source commit, generator provenance copied from `.printing-press.json`.
+- `library/<category>/<slug>/CHANGELOG.md` — topmost release note for the merge that changed the CLI.
+- The generated runtime version variable in `internal/cli/root.go` or `internal/cli/version.go` when present, plus `cmd/*-pp-mcp/main.go` for MCP server versions when present.
+
+The changelog entry is generated by automation, not by the PR author. The
+workflow uses the merged PR title as the changelog summary and attaches the PR
+number/URL when available. If a human-readable release note matters, make the PR
+title accurate and user-facing; do not add a provisional changelog section with
+a guessed CalVer.
+
+This workflow is post-merge by design. It prevents open PRs from conflicting on shared changelog/version files and lets older PRs merge without being rebased solely to catch up release counters. In normal feature or fix PRs:
+
+- Do not edit `.printing-press-release.json`.
+- Do not add a new `CHANGELOG.md` release section.
+- Do not hand-edit `var version = ...` for release bookkeeping.
+- Do update the CLI's README/SKILL/patch metadata when your user-facing change needs documentation; the release workflow will summarize the merge after it lands.
+
+For new-CLI PRs, blank release-ledger skeletons are acceptable. For reprints or
+other PRs that replace an existing `library/<category>/<slug>/` tree, preserve
+the existing `.printing-press-release.json` and `CHANGELOG.md` from `main`
+instead of taking the freshly generated skeletons. The post-merge workflow uses
+those existing files to increment the next CalVer release and retain changelog
+history; deleting them in the replacement PR resets the ledger before automation
+can do the right thing.
+
+If the release ledger itself drifts or a historical CLI is missing these files, run the scoped repair from the repo root and commit only the intended release-ledger outputs:
+
+```bash
+go run ./tools/release-ledger/main.go --init-missing
+```
+
+## Attribution: creator + contributors
+
+A printed CLI's attribution is a single permanent **`creator`** plus a multi-valued **`contributors[]`** in `.printing-press.json`, each a `{handle, name}` object — `handle` is the slug-safe GitHub `@handle` (drives the copyright header and byline links), `name` is the prose display name (drives the README byline parenthetical, NOTICE, and SKILL `author:`). This replaces the legacy `owner`/`owner_name`/`printer`/`printer_name` fields, which are still **dual-written** (derived from `creator`) during a transition window so older tooling keeps working. The registry generator emits both shapes.
+
+- **`creator` is permanent.** It is the human who first got the CLI into the library. **Never edit the `creator` block or the `// Copyright YYYY <name> and contributors.` header** on a reprint or a contribution — they belong to the original author. The ` and contributors` suffix is a constant regardless of count, so the header never churns.
+- **When you fix or improve a published CLI, add yourself to `contributors[]`** in that CLI's `.printing-press.json`. From a local `cli-printing-press` checkout, `cli-printing-press contributors add --dir library/<cat>/<slug>` does this idempotently (skips the creator and anyone already listed). A reprinter is listed first (`--front`). Plain regen/sync never appends a contributor — accrual is a deliberate action.
+- **Adding yourself is a three-surface change, not just the manifest.** The `contributors[]` entry alone leaves a divergence: your handle/name must also appear in the CLI's **README byline** (a `Contributors: [@handle](url) (Name).` line directly under `Created by …`) and its **NOTICE** (a `Contributors:` block with `  - Name (@handle)` rows). `cli-printing-press contributors add` writes only the manifest — it does **not** touch README or NOTICE — so follow it with `tools/sweep-canonical -readme-only` scoped to that CLI, or hand-add the two lines (that hand-edit is your own self-entry, distinct from the library-wide backfill below). Manifest-only adds are the common miss: both the granola (#1022) and flight-goat (#1008) contribution PRs left the byline and NOTICE stale. CI does not gate this; `greptile.json` flags the divergence.
+- **Do not hand-edit attribution from a contribution PR beyond adding your own contributor entry.** The library-wide migration and contributor backfill are owned by `tools/sweep-canonical` (`-backfill-contributors`), which derives contributors from git history with a bot/regen/rename denylist and surfaces a human-reviewable table before writing — see the next section.
+
+## `.printing-press-patches/` records library-side customizations
+
+If you modify a published CLI under `library/<cat>/<slug>/` beyond what the generator produced, **catalog the change as one file per patch under `.printing-press-patches/`** at the CLI's root (parallel to `.printing-press.json`). SKILL.md / README.md edits are owned by `tools/sweep-canonical/` or direct edit and don't need a patch entry; this convention is for code-level customizations.
+
+```
+library/<cat>/<slug>/.printing-press-patches/
+  <id>.json     one self-contained patch per file
+  _meta.json    only when the CLI carries CLI-global lists (see below)
+  .gitkeep      present even at zero patches (git won't track an empty dir)
+```
+
+Each `<id>.json` is a single self-contained patch object:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "id": "short-identifier",
   "applied_at": "YYYY-MM-DD",
   "base_run_id": "<copy from .printing-press.json>",
   "base_printing_press_version": "<copy from .printing-press.json>",
-  "patches": [
-    {
-      "id": "short-identifier",
-      "summary": "What changed (one sentence).",
-      "reason": "Why this customization was needed (one or two sentences).",
-      "files": ["internal/cli/foo.go"],
-      "validated_outcome": "Optional: non-obvious test result that confirms the fix.",
-      "upstream_issue": "Optional: https://github.com/mvanhorn/cli-printing-press/issues/<n>"
-    }
-  ]
+  "summary": "The durable behavior a regen must preserve — the lesson, not the diff (one sentence).",
+  "reason": "Why this API/runtime needs it and the failure mode it prevents (one or two sentences).",
+  "files": ["internal/cli/foo.go"],
+  "validated_outcome": "Optional: non-obvious test result that confirms the fix.",
+  "upstream_issue": "Optional: https://github.com/mvanhorn/cli-printing-press/issues/<n>"
 }
 ```
 
-Optional top-level fields the kalshi example uses when relevant: `upstream_tracking[]`, `deferred_to_upstream[]`.
+The filename is `slugify(id).json`. **One PR = one new file**, so two concurrent PRs on the same CLI write different files and never conflict on patch metadata — the whole point of the directory layout ([mvanhorn/cli-printing-press#2496](https://github.com/mvanhorn/cli-printing-press/issues/2496)). CLI-global lists that don't belong to any single patch (`upstream_tracking`, `deferred_to_upstream`, …) live in `_meta.json`; that is the one remaining shared file and it changes rarely.
 
-This file is an **index of customizations**, not a second copy of the diff. Diffs live in `git`; the manifest is what tells the next agent (or regeneration tooling) what was customized and why. Keep `summary` and `reason` short — if you find yourself writing tables of field renames or SQL transformations, that detail belongs in the commit message, not here. A fresh print from the generator overwrites this tree, and the manifest is what survives that overwrite.
+**Why this is not the legacy single-array file.** This used to be a single `.printing-press-patches.json` with a `patches: [...]` array that every PR appended to — a guaranteed merge conflict between any two same-CLI PRs. That shape is now **converted automatically**: the post-merge `normalize-patches.yml` workflow (source: `.github/scripts/normalize-patches/normalize.py`) explodes any legacy single-array file that lands on `main` into this directory. Older Printing Press versions still emit the single file, and CI tolerates it on PRs — you don't have to convert it yourself, the normalizer does it after merge. New work should write the directory form directly.
 
-**Inline `// PATCH:` source comments are optional, not required.** Earlier guidance asked agents to mark each changed site in source alongside the manifest entry; `verify_publish_package.py` enforced a bidirectional pairing that doubled the commit count on every in-session customization without surfacing a class of bug git history and the manifest didn't already cover. The pairing requirement is gone; if you find a marker helpful as a navigation aid for yourself, fine, but the CI no longer cares whether you add one.
+Each `<id>.json` is an **index entry**, not a second copy of the diff — and the bar is *altitude*, not just brevity. A fresh print overwrites this whole tree; these entries are what survive to steer the next regen away from re-making the mistake, so write each one as a **reprint-guard**: capture the durable behavioral contract or API/runtime reality the customization encodes, not the line-level changes (git already has those). Litmus test — the entry should still read true after a full regen.
 
-**Delete stale workaround entries.** A `reason` field that describes a verifier or pipeline bug (e.g. *"the package verifier currently treats X as Y; this entry exists to silence the false positive"*) is a placeholder, not a real customization. When the underlying bug is fixed, delete the entry — leaving it behind makes future contributors think there's a hand-edit to preserve when there isn't.
+- **Flag moving targets instead of enshrining them.** *"The client version is whatever the live desktop currently sends; a regen must re-discover it"* — not *"set User-Agent to 7.299.0"*.
+- **Let the `id` read as the lesson.** `d6-read-only-applies-to-all-desktop-token-sources`, not `add-tokensource-enum`.
+- **Keep `summary`/`reason` short.** A table of field renames or SQL transformations means you've dropped to changelog altitude; that belongs in the commit message, not here.
 
-A worked example lives at `library/payments/kalshi/.printing-press-patches.json`.
+**Delete stale workaround entries.** A `reason` field that describes a verifier or pipeline bug (e.g. *"the package verifier currently treats X as Y; this entry exists to silence the false positive"*) is a placeholder, not a real customization. When the underlying bug is fixed, delete the file — leaving it behind makes future contributors think there's a hand-edit to preserve when there isn't.
+
+A worked example lives at `library/payments/kalshi/.printing-press-patches/`.
 
 ## CLI `root.go` shape
 
@@ -249,6 +314,18 @@ Every CLI in `library/` **must** ship a `library/<category>/<slug>/SKILL.md`. Th
 **No command shims.** Per-CLI skills live under `cli-skills/pp-foo/SKILL.md` for direct installation through `npx skills add` and the npm installer. Don't re-add a `commands/` directory. `cli-skills/` is the flat direct-install namespace.
 
 When adding a new CLI, ship a library SKILL.md alongside the generated code. If you need to change SKILL.md *shape* (frontmatter fields, structure, sections), make that change in `cli-printing-press`'s `internal/generator/templates/skill.md.tmpl` and regenerate the affected CLIs — don't hand-shape it here.
+
+## ClawHub discovery skill release
+
+The root catalog/discovery skill lives at `skills/printing-press-library/SKILL.md`. Its frontmatter `version:` is the source of truth for ClawHub publishing.
+
+Any PR that changes `skills/printing-press-library/**` must bump that frontmatter version using semver:
+
+- patch: wording, examples, install command fixes
+- minor: new workflow, new supported harness, substantial discovery behavior
+- major: breaking discovery/install behavior, renamed skill, incompatible assumptions
+
+Do not tie this version to `npm/package.json`. The ClawHub discovery skill and npm installer release independently. The PR-time `verify-clawhub-discovery-version.yml` workflow enforces that the version increases before merge; the post-merge publish workflow verifies that the target version does not already exist on ClawHub before publishing.
 
 ## NPM installer surface
 
@@ -318,7 +395,9 @@ The `Fail on changes to generated artifacts` step in `verify-library-conventions
 
 ## Bulk SKILL.md/README.md retrofits: `tools/sweep-canonical/`
 
-When a SKILL.md or README.md shape change must propagate across **all library CLIs at once** — Hermes/OpenClaw shape alignment, stripping a deprecated field, normalizing an install command, rewriting the README `## Install` section — edit and run this tool rather than hand-touching every entry. The tool's job is "apply canonical published-library shape to every entry"; it covers frontmatter, SKILL.md Prerequisites, README `## Install`, and README Hermes/OpenClaw blocks. Don't use it for one-CLI-specific changes (edit `library/<cat>/<slug>/SKILL.md` or `README.md` directly), and don't use it for shape changes that belong upstream in `cli-printing-press/internal/generator/templates/skill.md.tmpl` or `readme.md.tmpl` — fix the template first so future fresh prints get it right, then run the sweep here to retrofit existing entries.
+When a SKILL.md or README.md shape change must propagate across **all library CLIs at once** — Hermes/OpenClaw shape alignment, stripping a deprecated field, normalizing an install command, rewriting the README `## Install` section — edit and run this tool rather than hand-touching every entry. The tool's job is "apply canonical published-library shape to every entry"; it covers frontmatter, SKILL.md Prerequisites, README `## Install`, README Hermes/OpenClaw blocks, and the **creator + contributors attribution surfaces** (the manifest `creator`/`contributors`, every `.go` copyright header, the README byline, and NOTICE). Don't use it for one-CLI-specific changes (edit `library/<cat>/<slug>/SKILL.md` or `README.md` directly), and don't use it for shape changes that belong upstream in `cli-printing-press/internal/generator/templates/skill.md.tmpl` or `readme.md.tmpl` — fix the template first so future fresh prints get it right, then run the sweep here to retrofit existing entries.
+
+**Attribution sweep + contributor backfill.** The default run derives each CLI's permanent `creator` from its legacy manifest fields (`printer`→`owner` for the handle; curated `cliAuthorByAPIName`→`printer_name`→`owner_name`→handle for the name) and writes it across the manifest, copyright headers, byline, and NOTICE — **creator only**, no contributors. Contributor backfill is opt-in via `-backfill-contributors`: it computes contributors from `git log` over each CLI directory, excludes the creator and a bot/regen/rename/sweep denylist, reports any author it can't map to a GitHub handle as "unresolved" (never written), and **prints a human-reviewable per-CLI table before mutating anything**. This split keeps the safe mechanical migration separate from the judgment-heavy attribution step — review the table before committing contributor writes (mirrors the prior misattribution scar: never claim others' work).
 
 **The `cliAuthorByAPIName` map is curated.** Don't replace it with a git-history lookup or operator-config fallback — that silently flips attribution on the published CLIs. Add a new entry when adding a new library CLI; correct one only when the actual author was misrecorded. As a defense in depth, the sweep tool now preserves any existing non-placeholder `author:` value already in `library/<cat>/<slug>/SKILL.md` and only fills in a ctx-resolved author when the existing value is missing or the generator-fallback placeholder `"user"`. This makes the sweep safe to run from any workspace — it won't silently flip a real author to the operator's `git config user.name`.
 

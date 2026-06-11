@@ -6,6 +6,10 @@
   "display_name": "WHOOP",
   "description": "Fetch WHOOP recovery, strain, sleep, workout, cycle, profile, and body-measurement data with OAuth-backed API access.",
   "cli_name": "whoop-pp-cli",
+  "creator": {
+    "handle": "gregvanhorn",
+    "name": "Greg Van Horn"
+  },
   "owner": "gregvanhorn",
   "printer": "gregvanhorn",
   "printer_name": "Greg Van Horn",
@@ -66,6 +70,12 @@
       "name": "Journal cross-reference",
       "command": "journal",
       "description": "Cross-reference Whoop Journal answers against next-day recovery deltas."
+    }
+  ],
+  "contributors": [
+    {
+      "handle": "bobeglz",
+      "name": "Roberto Gonz\u00e1lez Grajeda"
     }
   ]
 }

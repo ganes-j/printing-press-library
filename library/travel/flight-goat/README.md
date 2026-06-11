@@ -45,6 +45,8 @@ and a React frontend.
 Our AeroAPI push notification [testing interface](/commercial/aeroapi/send.rvt)
 provides a quick and easy way to test the delivery of customized alerts via AeroAPI push.
 
+Created by [@mvanhorn](https://github.com/mvanhorn) (Matt Van Horn).
+
 ## Install
 
 The recommended path installs both the `flight-goat-pp-cli` binary and the `pp-flight-goat` agent skill (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and other agents supported by the upstream [`skills`](https://github.com/vercel-labs/skills) CLI) in one shot:
@@ -89,6 +91,14 @@ Download a pre-built binary for your platform from the [latest release](https://
 <!-- pp-hermes-install-anchor -->
 ## Install for Hermes
 
+Install the CLI binary first. The installer writes binaries to a per-user managed bin directory by default: `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows.
+
+```bash
+npx -y @mvanhorn/printing-press-library install flight-goat --cli-only
+```
+
+Then install the focused Hermes skill.
+
 From the Hermes CLI:
 
 ```bash
@@ -101,13 +111,17 @@ Inside a Hermes chat session:
 /skills install mvanhorn/printing-press-library/cli-skills/pp-flight-goat --force
 ```
 
+Restart the Hermes session or gateway if the newly installed skill is not visible immediately.
+
 ## Install for OpenClaw
 
-Tell your OpenClaw agent (copy this):
+Install both the CLI binary and the focused OpenClaw skill. The installer defaults binaries to a per-user bin directory (`$HOME/.local/bin` on macOS/Linux, `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows):
 
+```bash
+npx -y @mvanhorn/printing-press-library install flight-goat --agent openclaw
 ```
-Install the pp-flight-goat skill from https://github.com/mvanhorn/printing-press-library/tree/main/cli-skills/pp-flight-goat. The skill defines how its required CLI can be installed.
-```
+
+Restart the OpenClaw session or gateway if the newly installed skill is not visible immediately.
 
 ## Use with Claude Desktop
 
@@ -180,6 +194,25 @@ flight-goat-pp-cli airports get mock-value
 ## Usage
 
 Run `flight-goat-pp-cli --help` for the full command reference and flag list.
+
+### Delay Assessment
+
+Use `assess` when a user has a delayed flight or route and needs to decide
+whether the problem is airport-wide, destination-wide, or specific to one
+operator/aircraft.
+
+```bash
+flight-goat-pp-cli assess --origin SFO --destination DCA --delayed-flight UA123 --agent
+flight-goat-pp-cli assess --origin KSFO --destination KJFK --depart-after 18:00 --no-prices --agent
+```
+
+The report joins AeroAPI airport delays, disruption counts, weather, route
+alternatives, delayed-flight and inbound-aircraft status, FAA NAS Status, and
+optional Google Flights price context. Failed upstream calls are returned in
+`sources` and `decision.missing_evidence` so partial reports are explicit.
+Raw AeroAPI payloads are omitted by default; add `--include-raw` when an agent
+needs the original JSON for audit or custom scoring. FAA NOTAM data is not
+included yet.
 
 ### Google Flights Currency
 

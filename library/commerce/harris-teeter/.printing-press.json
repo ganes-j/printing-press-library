@@ -5,6 +5,10 @@
   "api_name": "harris-teeter",
   "display_name": "Harris Teeter",
   "cli_name": "harris-teeter-pp-cli",
+  "creator": {
+    "handle": "jwmoss",
+    "name": "Jonathan Moss"
+  },
   "owner": "jonathan-moss",
   "printer": "jwmoss",
   "printer_name": "Jonathan Moss",
@@ -44,6 +48,12 @@
       "name": "Read-only cart and list inspection",
       "command": "cart",
       "description": "Inspect the authenticated Harris Teeter cart and shopping-list surfaces without exposing mutating checkout or order actions."
+    }
+  ],
+  "contributors": [
+    {
+      "handle": "tmchow",
+      "name": "Trevin Chow"
     }
   ]
 }
