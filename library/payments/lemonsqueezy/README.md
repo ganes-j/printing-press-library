@@ -125,6 +125,38 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 
 Lemon Squeezy uses HTTP Bearer auth. Create an API key at https://app.lemonsqueezy.com/settings/api, then export `LEMONSQUEEZY_API_KEY=<your-key>`. Verify with `lemonsqueezy-pp-cli doctor`.
 
+
+## Catalog setup and checkout limitations
+
+Lemon Squeezy's public API exposes catalog resources as read-only: `products`, `variants`, and `files` support list/get, not create/update/delete. The CLI must not use private dashboard APIs and must not fake product-create dry-runs. For catalog setup, generate a dashboard handoff packet:
+
+```bash
+lemonsqueezy-pp-cli capabilities --resource products --json
+lemonsqueezy-pp-cli dashboard handoff product \
+  --name "Juno Home Chief of Staff Starter Kit" \
+  --slug juno-home-chief-of-staff-starter-kit \
+  --sku juno-home-chief-of-staff-starter-kit \
+  --price-usd 149 \
+  --type "digital download" \
+  --redirect-url https://www.littlemight.com/ai-house-manager/thank-you/ \
+  --affiliate-percent 25 \
+  --affiliate-approval "manual approval" \
+  --affiliate-cookie-days 30 \
+  --json
+```
+
+Once the product/variant/file exist in the dashboard, checkout creation is API-supported via `POST /v1/checkouts`:
+
+```bash
+lemonsqueezy-pp-cli checkouts create \
+  --store-id <STORE_ID> \
+  --variant-id <VARIANT_ID> \
+  --redirect-url https://www.littlemight.com/ai-house-manager/thank-you/ \
+  --dry-run --json
+```
+
+Live checkout creation validates the store and variant first unless `--skip-validate` is set, then prints the checkout ID/URL returned by Lemon Squeezy.
+
 ## Quick Start
 
 ```bash

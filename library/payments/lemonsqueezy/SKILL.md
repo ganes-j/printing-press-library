@@ -49,6 +49,38 @@ Do not use this CLI for:
 - Tax/VAT reporting — Lemon Squeezy is merchant-of-record and ships its own tax docs in the dashboard; this CLI doesn't replicate them.
 - Customer-facing license validation in your desktop app — call the LS license API directly from the app, not via this CLI.
 
+
+## Catalog setup rule (public API limitation)
+
+Do **not** try to create Lemon Squeezy products, variants, or digital files through the public API. Official docs and OPTIONS checks show those catalog resources are list/get only. `import products`, `import variants`, and `import files` intentionally refuse with `resource_read_only` / `operation_not_supported_by_public_api` instead of emitting fake POST dry-runs.
+
+Use these commands instead:
+
+```bash
+# Ask what writes are supported before mutating anything.
+lemonsqueezy-pp-cli capabilities --json
+lemonsqueezy-pp-cli which "create product" --json
+lemonsqueezy-pp-cli which "upload file" --json
+
+# Prepare a dashboard handoff packet for catalog setup.
+lemonsqueezy-pp-cli dashboard handoff product \
+  --name "Juno Home Chief of Staff Starter Kit" \
+  --slug juno-home-chief-of-staff-starter-kit \
+  --sku juno-home-chief-of-staff-starter-kit \
+  --price-usd 149 \
+  --type "digital download" \
+  --redirect-url https://www.littlemight.com/ai-house-manager/thank-you/ \
+  --affiliate-percent 25 \
+  --affiliate-approval "manual approval" \
+  --affiliate-cookie-days 30 \
+  --json
+
+# After the dashboard-created variant exists, create checkout URLs via API.
+lemonsqueezy-pp-cli checkouts create --store-id <STORE_ID> --variant-id <VARIANT_ID> --dry-run --json
+```
+
+Checkout creation is supported by `POST /v1/checkouts` only after you already have a valid store ID and variant ID. Live `checkouts create` validates both before POSTing and returns the checkout URL/ID.
+
 ## Unique Capabilities
 
 These capabilities aren't available in any other tool for this API.
