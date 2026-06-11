@@ -1,0 +1,39 @@
+{
+  "manifest_version": "0.3",
+  "name": "sendfox-pp-mcp",
+  "display_name": "Sendfox",
+  "version": "4.20.1",
+  "description": "SendFox email marketing API for authenticated user details, contact lists, contacts, unsubscribe operations",
+  "author": {
+    "name": "CLI Printing Press"
+  },
+  "license": "Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "bin/sendfox-pp-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/bin/sendfox-pp-mcp",
+      "args": [],
+      "env": {
+        "SENDFOX_BEARER_AUTH": "${user_config.sendfox_bearer_auth}"
+      }
+    }
+  },
+  "user_config": {
+    "sendfox_bearer_auth": {
+      "type": "string",
+      "title": "SENDFOX_BEARER_AUTH",
+      "description": "Sets SENDFOX_BEARER_AUTH for the Sendfox MCP server.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ]
+  }
+}

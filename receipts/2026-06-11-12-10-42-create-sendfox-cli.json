@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-06-11T12:10:42-04:00",
+  "action": "create-sendfox-printing-press-cli",
+  "repo": "/Users/knox/Developer/PrintingPress/printing-press-library-sendfox",
+  "branch": "feat/sendfox-cli",
+  "summary": "Generated a SendFox Printing Press CLI from curated official HelpScout docs/OpenAPI, added SendFox-specific compound commands, mirrored pp-sendfox skill, and regenerated catalog registry/README.",
+  "validation": [
+    "go test ./... (library/marketing/sendfox)",
+    "go vet ./... (library/marketing/sendfox)",
+    "go build ./... (library/marketing/sendfox)",
+    "python3 ../../../.github/scripts/verify-skill/verify_skill.py --dir .",
+    "cli dry-run smoke: workflow account-snapshot, contacts onboard, forms generate",
+    "cli-printing-press publish validate --dir library/marketing/sendfox --json: passed"
+  ],
+  "notes": [
+    "Live SendFox API smoke was skipped: no credential was available without prompting for secret access; dry-run and generated verify gates passed.",
+    "SENDFOX_API_TOKEN is the preferred auth env var; generated SENDFOX_BEARER_AUTH remains supported as an alias."
+  ]
+}

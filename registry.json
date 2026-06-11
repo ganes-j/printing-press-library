@@ -9341,6 +9341,56 @@
       }
     },
     {
+      "name": "sendfox",
+      "category": "marketing",
+      "api": "SendFox",
+      "description": "SendFox email marketing API for authenticated user details, contact lists, contacts, unsubscribe operations",
+      "search_terms": [
+        "sendfox",
+        "sendfox-pp-cli",
+        "Manage SendFox contacts, lists, campaigns, audience snapshots, bulk imports, and signup-form handoffs from the terminal.",
+        "Account Snapshot",
+        "workflow account-snapshot",
+        "One read-only operating snapshot across /me, lists, contacts, and campaigns.",
+        "Audience Map",
+        "workflow audience-map",
+        "Map contacts to lists and surface contacts without list memberships for segmentation cleanup.",
+        "Campaign Digest",
+        "workflow campaign-digest",
+        "Summarize campaign count, status mix, and recent campaigns.",
+        "Contacts Onboard",
+        "Create a contact and attach list memberships in one automation-aware command with dry-run call preview.",
+        "Contacts Import CSV",
+        "contacts import-csv",
+        "Bulk-create contacts from CSV after a required dry-run/--yes safety gate.",
+        "Forms Generate",
+        "Generate a self-contained signup form handoff with server-side SendFox proxy guidance."
+      ],
+      "path": "library/marketing/sendfox",
+      "printer": "cathrynlavery",
+      "printer_name": "Cathryn Lavery",
+      "creator": {
+        "handle": "cathrynlavery",
+        "name": "Cathryn Lavery"
+      },
+      "mcp": {
+        "binary": "sendfox-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 11,
+        "public_tool_count": 0,
+        "auth_type": "bearer_token",
+        "env_vars": [
+          "SENDFOX_API_TOKEN",
+          "SENDFOX_BEARER_AUTH"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "openapi3"
+      }
+    },
+    {
       "name": "sendgrid",
       "category": "productivity",
       "api": "Twilio Sendgrid",
@@ -12191,6 +12241,10 @@
         {
           "handle": "tmchow",
           "name": "Trevin Chow"
+        },
+        {
+          "handle": "mvanhorn",
+          "name": "Matt Van Horn"
         }
       ],
       "mcp": {

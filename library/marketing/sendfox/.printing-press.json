@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-06-11T16:54:23.179612Z",
+  "printing_press_version": "4.20.1",
+  "api_name": "sendfox",
+  "display_name": "SendFox",
+  "cli_name": "sendfox-pp-cli",
+  "creator": {
+    "handle": "cathrynlavery",
+    "name": "Cathryn Lavery"
+  },
+  "owner": "cathrynlavery",
+  "printer_name": "Cathryn Lavery",
+  "spec_url": "https://help.sendfox.com/article/278-endpoints",
+  "spec_path": "spec.yaml",
+  "spec_format": "openapi3",
+  "spec_checksum": "sha256:24923665452370e3c7cd0dfd1b55979a8f35ef65528cdaffd4b6e1dbd98cae11",
+  "run_id": "20260611-165423",
+  "category": "marketing",
+  "description": "Manage SendFox contacts, lists, campaigns, audience snapshots, bulk imports, and signup-form handoffs from the terminal.",
+  "mcp_binary": "sendfox-pp-mcp",
+  "mcp_tool_count": 11,
+  "mcp_ready": "full",
+  "api_version": "1.0",
+  "auth_type": "bearer_token",
+  "auth_env_vars": [
+    "SENDFOX_API_TOKEN",
+    "SENDFOX_BEARER_AUTH"
+  ],
+  "auth_env_var_specs": [
+    {
+      "name": "SENDFOX_API_TOKEN",
+      "kind": "per_call",
+      "required": false,
+      "sensitive": true
+    },
+    {
+      "name": "SENDFOX_BEARER_AUTH",
+      "kind": "per_call",
+      "required": false,
+      "sensitive": true,
+      "alias_for": "SENDFOX_API_TOKEN"
+    }
+  ],
+  "auth_key_url": "https://sendfox.com/account/oauth",
+  "novel_features": [
+    {
+      "name": "Account Snapshot",
+      "command": "workflow account-snapshot",
+      "description": "One read-only operating snapshot across /me, lists, contacts, and campaigns."
+    },
+    {
+      "name": "Audience Map",
+      "command": "workflow audience-map",
+      "description": "Map contacts to lists and surface contacts without list memberships for segmentation cleanup."
+    },
+    {
+      "name": "Campaign Digest",
+      "command": "workflow campaign-digest",
+      "description": "Summarize campaign count, status mix, and recent campaigns."
+    },
+    {
+      "name": "Contacts Onboard",
+      "command": "contacts onboard",
+      "description": "Create a contact and attach list memberships in one automation-aware command with dry-run call preview."
+    },
+    {
+      "name": "Contacts Import CSV",
+      "command": "contacts import-csv",
+      "description": "Bulk-create contacts from CSV after a required dry-run/--yes safety gate."
+    },
+    {
+      "name": "Forms Generate",
+      "command": "forms generate",
+      "description": "Generate a self-contained signup form handoff with server-side SendFox proxy guidance."
+    }
+  ],
+  "printer": "cathrynlavery",
+  "catalog_entry": "sendfox"
+}
