@@ -108,6 +108,7 @@ Products, variants, and digital files are dashboard-only in the public API. This
 				fileInfo = info
 			}
 
+			verifyCmd := buildCheckoutVerificationCommand(redirectURL)
 			packet := dashboardHandoffPacket{
 				Workflow: "lemon_squeezy_dashboard_catalog_setup",
 				Reason:   "resource_read_only: operation_not_supported_by_public_api for products, variants, and files",
@@ -146,7 +147,7 @@ Products, variants, and digital files are dashboard-only in the public API. This
 					"lemonsqueezy-pp-cli products list --json --select id,attributes.name,attributes.slug",
 					"lemonsqueezy-pp-cli variants list --json --select id,attributes.name,attributes.slug,attributes.price",
 					"lemonsqueezy-pp-cli files list --json --select id,attributes.name,attributes.size",
-					"lemonsqueezy-pp-cli checkouts create --store-id <STORE_ID> --variant-id <VARIANT_ID> --redirect-url " + redirectURL + " --dry-run --json",
+					verifyCmd,
 				},
 				CheckoutNextStep: "After the dashboard-created variant exists, run checkouts create with --store-id and --variant-id. The CLI will validate both resources before POST /v1/checkouts unless --skip-validate is set.",
 				PublicAPINote:    "Do not use private dashboard APIs. Public API catalog setup is list/get only; checkout creation is API-supported after variant exists.",
@@ -165,6 +166,14 @@ Products, variants, and digital files are dashboard-only in the public API. This
 	cmd.Flags().StringVar(&affiliateApproval, "affiliate-approval", "manual approval", "Affiliate approval mode")
 	cmd.Flags().StringVar(&affiliateCookie, "affiliate-cookie-days", "30", "Affiliate cookie duration in days")
 	return cmd
+}
+
+func buildCheckoutVerificationCommand(redirectURL string) string {
+	cmd := "lemonsqueezy-pp-cli checkouts create --store-id <STORE_ID> --variant-id <VARIANT_ID>"
+	if strings.TrimSpace(redirectURL) != "" {
+		cmd += " --redirect-url " + redirectURL
+	}
+	return cmd + " --dry-run --json"
 }
 
 func checksumFile(path string) (*dashboardHandoffFile, error) {

@@ -158,7 +158,9 @@ func unsupportedResourceOperation(resource, operation string) unsupportedOperati
 func emitUnsupportedOperation(cmd *cobra.Command, flags *rootFlags, resource, operation string) error {
 	report := unsupportedResourceOperation(resource, operation)
 	if flags != nil && flags.asJSON {
-		_ = printJSONFiltered(cmd.OutOrStdout(), report, flags)
+		if err := printJSONFiltered(cmd.OutOrStdout(), report, flags); err != nil {
+			return usageErr(fmt.Errorf("%s: %s %s (json output error: %w)", report.Reason, report.Operation, report.Resource, err))
+		}
 	} else {
 		fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s %s is not supported by Lemon Squeezy's public API\n", report.Error, report.Operation, report.Resource)
 		fmt.Fprintf(cmd.ErrOrStderr(), "reason: %s\n", report.Reason)

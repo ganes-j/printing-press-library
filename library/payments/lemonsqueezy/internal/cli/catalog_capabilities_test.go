@@ -57,6 +57,23 @@ func TestCheckoutCreatePayload_JSONAPI(t *testing.T) {
 	}
 }
 
+func TestBuildCheckoutVerificationCommand_OmitsEmptyRedirectURL(t *testing.T) {
+	cmd := buildCheckoutVerificationCommand("")
+	if strings.Contains(cmd, "--redirect-url") {
+		t.Fatalf("empty redirect URL should not emit --redirect-url flag: %s", cmd)
+	}
+	if !strings.Contains(cmd, "--dry-run --json") {
+		t.Fatalf("verification command must remain a dry run: %s", cmd)
+	}
+}
+
+func TestBuildCheckoutVerificationCommand_IncludesRedirectURL(t *testing.T) {
+	cmd := buildCheckoutVerificationCommand("https://example.com/thanks")
+	if !strings.Contains(cmd, "--redirect-url https://example.com/thanks --dry-run --json") {
+		t.Fatalf("verification command should include redirect URL before dry-run flags: %s", cmd)
+	}
+}
+
 func TestWhichIndex_CatalogNegativeGuidance(t *testing.T) {
 	for _, query := range []string{"create product", "upload file"} {
 		matches := rankWhich(whichIndex, query, 1)

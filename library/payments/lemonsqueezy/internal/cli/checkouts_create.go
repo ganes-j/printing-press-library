@@ -115,9 +115,7 @@ func buildCheckoutCreatePayload(opts checkoutCreateOptions) map[string]any {
 	if opts.ReceiptLinkURL != "" {
 		productOptions["receipt_link_url"] = opts.ReceiptLinkURL
 	}
-	if len(productOptions) > 0 {
-		attrs["product_options"] = productOptions
-	}
+	attrs["product_options"] = productOptions
 	checkoutData := map[string]any{}
 	if opts.Email != "" {
 		checkoutData["email"] = opts.Email
@@ -192,10 +190,10 @@ func validateCheckoutPrereqs(cmd *cobra.Command, flags *rootFlags, storeID, vari
 		return err
 	}
 	if _, err := c.Get(cmd.Context(), "/v1/stores/"+storeID, nil); err != nil {
-		return classifyAPIError(fmt.Errorf("validating store %s: %w", storeID, err), flags)
+		return fmt.Errorf("validating store %s: %w", storeID, classifyAPIError(err, flags))
 	}
 	if _, err := c.Get(cmd.Context(), "/v1/variants/"+variantID, nil); err != nil {
-		return classifyAPIError(fmt.Errorf("validating variant %s: %w", variantID, err), flags)
+		return fmt.Errorf("validating variant %s: %w", variantID, classifyAPIError(err, flags))
 	}
 	return nil
 }
