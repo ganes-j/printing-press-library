@@ -2,6 +2,10 @@
 
 This file is maintained by printing-press-library release automation. Do not hand-edit release sections in normal PRs.
 
+## 2026.6.8 - 2026-06-15
+
+- fix(x-twitter): address article review follow-ups (#1217).
+
 ## 2026.6.7 - 2026-06-15
 
 - fix(x-twitter): improve article agent ergonomics (#1213).

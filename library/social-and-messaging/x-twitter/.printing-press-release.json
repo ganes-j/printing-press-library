@@ -2,17 +2,17 @@
   "schema_version": 1,
   "slug": "x-twitter",
   "cli_name": "x-twitter-pp-cli",
-  "version": "2026.6.7",
-  "released_at": "2026-06-15T21:24:19Z",
-  "source_commit": "c92eff0fe8815346b54de674c0a8a7a7e6ed5333",
+  "version": "2026.6.8",
+  "released_at": "2026-06-15T22:13:16Z",
+  "source_commit": "d4929f8f17372868e78be7f9aaf53edb0d77a068",
   "printing_press_version": "4.20.1",
   "run_id": "20260603-230951",
   "changes": [
     {
-      "title": "fix(x-twitter): improve article agent ergonomics",
-      "pr": 1213,
-      "url": "https://github.com/mvanhorn/printing-press-library/pull/1213",
-      "commit": "c92eff0fe8815346b54de674c0a8a7a7e6ed5333"
+      "title": "fix(x-twitter): address article review follow-ups",
+      "pr": 1217,
+      "url": "https://github.com/mvanhorn/printing-press-library/pull/1217",
+      "commit": "d4929f8f17372868e78be7f9aaf53edb0d77a068"
     }
   ]
 }
