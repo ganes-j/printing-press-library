@@ -117,9 +117,6 @@ func (c *Config) AuthHeader() string {
 	if token == "" {
 		return ""
 	}
-	if c.JudgeMePrivateApikey == "" {
-		return ""
-	}
 	return token
 }
 

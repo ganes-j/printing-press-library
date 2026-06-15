@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mvanhorn/printing-press-library/library/marketing/judge-me/internal/client"
 	"github.com/spf13/cobra"
@@ -127,7 +126,7 @@ func newReputationSummaryCmd(flags *rootFlags) *cobra.Command {
 			if data, err := c.Get(ctx, "/shops/info", nil); err == nil {
 				out.ShopInfo = decodeAny(data)
 			}
-			if data, err := c.Get(ctx, "/settings", map[string]string{"setting_keys[]": "autopublish,enable_review_pictures,widget_star_color,admin_email"}); err == nil {
+			if data, err := c.Get(ctx, reputationSettingsPath(), nil); err == nil {
 				out.Settings = decodeAny(data)
 			}
 			if db, err := openStoreForRead(ctx, "judge-me-pp-cli"); err == nil && db != nil {
@@ -242,7 +241,7 @@ func newReputationSettingsAuditCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := c.Get(ctx, "/settings", map[string]string{"setting_keys[]": "autopublish,enable_review_pictures,widget_star_color,admin_email"})
+			data, err := c.Get(ctx, reputationSettingsPath(), nil)
 			if err != nil {
 				return classifyAPIError(err, flags)
 			}
@@ -551,4 +550,6 @@ func firstNonEmpty(vals ...string) string {
 }
 func round2(f float64) float64 { n, _ := strconv.ParseFloat(fmt.Sprintf("%.2f", f), 64); return n }
 
-var _ = time.Time{}
+func reputationSettingsPath() string {
+	return "/settings?setting_keys[]=autopublish&setting_keys[]=enable_review_pictures&setting_keys[]=widget_star_color&setting_keys[]=admin_email"
+}
