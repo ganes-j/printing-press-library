@@ -645,7 +645,7 @@
         "Amazon Orders",
         "amazon-orders-pp-cli",
         "Sync your Amazon order history into a local SQLite store, then ask cross-cutting questions offline: which deliveries are slipping, what did I spend last quarter, when did I order that thing, where is my stuff right now.",
-        "Amazon does not publish a buyer-side API for order history. This CLI imports\ncookies from your logged-in Chrome / Firefox / Safari / Brave browser session,\nthen makes authenticated HTTPS GETs to the same HTML pages you see on\namazon.com. Log in to amazon.com in your browser, then run:\n\n  amazon-orders-pp-cli auth login --chrome\n\nCookies live under the .amazon.com domain. The CLI persists them locally and\nrefreshes the session-id cookie automatically when amazon.com rotates it.",
+        "Amazon does not publish a buyer-side API for order history. This CLI imports cookies from your logged-in Chrome / Firefox / Safari / Brave browser session, then makes authenticated HTTPS GETs to the same HTML pages you see on your configured Amazon marketplace. Log in to that marketplace in your browser, then run:\n\n  amazon-orders-pp-cli auth login --chrome\n\nFor India or another non-US marketplace, pass the domain, e.g.:\n\n  amazon-orders-pp-cli auth login --chrome --domain amazon.in\n\nThe CLI persists cookies locally and refreshes the session-id cookie automatically when Amazon rotates it.",
         "Where Is My Stuff",
         "where-is-my-stuff",
         "All in-flight Amazon shipments with their current status and ETA in one view.",
@@ -4233,6 +4233,37 @@
         ],
         "mcp_ready": "full",
         "spec_format": "internal"
+      }
+    },
+    {
+      "name": "fellow-stagg-ekg",
+      "category": "devices",
+      "api": "Fellow Stagg EKG",
+      "description": "Control a Fellow Stagg EKG kettle over its local HTTP command interface from the terminal.",
+      "search_terms": [
+        "fellow-stagg-ekg",
+        "Fellow Stagg EKG",
+        "fellow-stagg-ekg-pp-cli",
+        "Control a Fellow Stagg EKG kettle over its local HTTP command interface from the terminal.",
+        "Status snapshot",
+        "status",
+        "One-shot state, settings, and firmware view for a quick kettle check.",
+        "Heat with target temperature",
+        "heat",
+        "Set the kettle target temperature and then start heating in one invocation.",
+        "Direct hardware controls",
+        "button",
+        "Press or release the kettle buttons and rotate the dial without opening the app.",
+        "Raw recovery path",
+        "raw",
+        "Send an arbitrary local HTTP command string when you need a recovery or debugging escape hatch."
+      ],
+      "path": "library/devices/fellow-stagg-ekg",
+      "printer": "erikrogne",
+      "printer_name": "Erik Rogne",
+      "creator": {
+        "handle": "erikrogne",
+        "name": "Erik Rogne"
       }
     },
     {
