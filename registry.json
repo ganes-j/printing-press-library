@@ -2141,6 +2141,59 @@
       }
     },
     {
+      "name": "claude-agent-sdk-python-docs",
+      "category": "developer-tools",
+      "api": "Claude Agent SDK Python Docs",
+      "description": "A source-grounded CLI for exploring and verifying the Claude Agent SDK Python docs.",
+      "search_terms": [
+        "claude-agent-sdk-python-docs",
+        "Claude Agent SDK Python Docs",
+        "claude-agent-sdk-python-docs-pp-cli",
+        "A source-grounded CLI for exploring and verifying the Claude Agent SDK Python docs.",
+        "Code usage verifier against documented symbols",
+        "verify",
+        "Check Python code imports and qualified names against documented Claude Agent SDK symbols.",
+        "Agent-ready task context bundle",
+        "context",
+        "Build a compact source-cited docs bundle for one SDK implementation task.",
+        "Doc change diff by content hash",
+        "diff",
+        "Compare current docs entity hashes against an optional baseline file.",
+        "Minimal recipe composer from examples and signatures",
+        "recipe",
+        "Compose a deterministic implementation scaffold from documented snippets and exact signatures.",
+        "SDK surface map by entity type",
+        "map",
+        "Map functions, classes, types, options, tools, hooks, and message blocks by entity type.",
+        "Example-to-symbol coverage map",
+        "coverage examples",
+        "Report which documented symbols have extracted examples and which do not.",
+        "Anchor and link integrity audit",
+        "audit-links",
+        "Validate internal anchors, guide links, and section references in the fetched docs corpus."
+      ],
+      "path": "library/developer-tools/claude-agent-sdk-python-docs",
+      "printer": "nikships",
+      "printer_name": "Nik",
+      "creator": {
+        "handle": "nikships",
+        "name": "Nik"
+      },
+      "mcp": {
+        "binary": "claude-agent-sdk-python-docs-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 9,
+        "public_tool_count": 9,
+        "auth_type": "none",
+        "env_vars": [],
+        "mcp_ready": "full",
+        "spec_format": "internal"
+      }
+    },
+    {
       "name": "clickup",
       "category": "project-management",
       "api": "Clickup",
@@ -6463,6 +6516,52 @@
         ],
         "tool_count": 2,
         "public_tool_count": 2,
+        "auth_type": "none",
+        "env_vars": [],
+        "mcp_ready": "full",
+        "spec_format": "internal"
+      }
+    },
+    {
+      "name": "luma",
+      "category": "social-and-messaging",
+      "api": "Luma",
+      "description": "Browse, search, and export public Luma events from one Go binary — no account, no API key, plus offline full-text search the public API doesn't have.",
+      "search_terms": [
+        "luma",
+        "luma-pp-cli",
+        "Browse, search, and export public Luma events from one Go binary — no account, no API key, plus offline full-text search the public API doesn't have.",
+        "Multi-city/category agenda",
+        "agenda",
+        "One flat, date-sorted list of upcoming events across multiple cities and categories at once.",
+        "Geo-radius event search",
+        "near",
+        "Find events within N km of a lat/lng, ranked by distance.",
+        "ICS export of any filtered set",
+        "ics",
+        "Export a synced/filtered set of events to a .ics calendar file your calendar app can import.",
+        "Drift / new-since-last-sync",
+        "watch",
+        "Show what changed on synced events since the previous sync — new, removed, filling up, sold out, rescheduled.",
+        "Multi-calendar aggregate compare",
+        "calendars compare",
+        "Side-by-side upcoming-event counts and total guest counts across several calendars (communities)."
+      ],
+      "path": "library/social-and-messaging/luma",
+      "printer": "richardadonnell",
+      "printer_name": "richardadonnell",
+      "creator": {
+        "handle": "richardadonnell",
+        "name": "richardadonnell"
+      },
+      "mcp": {
+        "binary": "luma-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 8,
+        "public_tool_count": 8,
         "auth_type": "none",
         "env_vars": [],
         "mcp_ready": "full",
