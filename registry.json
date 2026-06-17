@@ -440,6 +440,52 @@
       }
     },
     {
+      "name": "airflow-admin",
+      "category": "developer-tools",
+      "api": "Apache Airflow Admin",
+      "description": "Read-first Apache Airflow operations CLI for DAG inventory, DAG run history, task instance inspection, pool capacity, metadata sync, search, and runtime health checks.",
+      "search_terms": [
+        "airflow-admin",
+        "Apache Airflow Admin",
+        "airflow-admin-pp-cli",
+        "Read-first Apache Airflow operations CLI for DAG inventory, DAG run history, task instance inspection, pool capacity, metadata sync, search, and runtime health checks.",
+        "Airflow health readout",
+        "monitor",
+        "Checks Airflow's health endpoint so an engineer can verify the webserver, scheduler, and supporting services before drilling into DAG failures.",
+        "DAG inventory",
+        "dags list",
+        "Lists DAG metadata such as active and paused state, giving teams a compact view of what Airflow is currently managing.",
+        "DAG run triage",
+        "dags dag-runs list",
+        "Filters DAG run history by state and time window to help identify failed or delayed pipeline runs.",
+        "Task instance inspection",
+        "dags dag-runs list-task-instances",
+        "Shows task-level state, retries, and timing inside a DAG run so engineers can find the failing step.",
+        "Local Airflow metadata search",
+        "sync",
+        "Syncs Airflow metadata into a local SQLite store for fast offline search and lightweight analysis."
+      ],
+      "path": "library/developer-tools/airflow-admin",
+      "printer": "sdhilip200",
+      "printer_name": "Dhilip Subramanian",
+      "mcp": {
+        "binary": "airflow-admin-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 16,
+        "public_tool_count": 16,
+        "auth_type": "airflow-jwt",
+        "env_vars": [
+          "AIRFLOW_ADMIN_BASE_URL",
+          "AIRFLOW_ADMIN_BEARER_AUTH"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "openapi3"
+      }
+    },
+    {
       "name": "airframe",
       "category": "developer-tools",
       "api": "Airframe",
