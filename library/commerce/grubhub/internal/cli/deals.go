@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mvanhorn/printing-press-library/library/commerce/grubhub/internal/grubhub"
 	"github.com/spf13/cobra"
+	"grubhub-pp-cli/internal/grubhub"
 )
 
 type dealRow struct {
@@ -118,11 +118,11 @@ func dealRowsFromCards(cards []grubhub.Card) []dealRow {
 			if label != "" {
 				row.Offers = append(row.Offers, label)
 			}
-			if int(o.Amount.Value) > bestCents {
-				bestCents = int(o.Amount.Value)
+			if o.ValueCents() > bestCents {
+				bestCents = o.ValueCents()
 				row.BestOffer = label
-				if o.Amount.OrderMinimum > 0 {
-					row.OrderMinimum = grubhub.Dollars(int(o.Amount.OrderMinimum))
+				if o.OrderMinimumCents() > 0 {
+					row.OrderMinimum = grubhub.Dollars(o.OrderMinimumCents())
 				} else {
 					row.OrderMinimum = ""
 				}

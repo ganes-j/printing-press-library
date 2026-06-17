@@ -5,6 +5,7 @@ package grubhub
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 )
 
@@ -33,6 +34,14 @@ type Offer struct {
 		OrderMinimum float64 `json:"order_minimum"`
 	} `json:"amount"`
 }
+
+// ValueCents returns the offer's discount amount in integer cents. Grubhub
+// encodes amount.value in cents (observed: 500 == $5.00); rounding rather than
+// truncating guards against any fractional encoding a future response might use.
+func (o Offer) ValueCents() int { return int(math.Round(o.Amount.Value)) }
+
+// OrderMinimumCents returns the offer's order-minimum threshold in integer cents.
+func (o Offer) OrderMinimumCents() int { return int(math.Round(o.Amount.OrderMinimum)) }
 
 // Card is the subset of a Grubhub search result we expose and cache.
 type Card struct {

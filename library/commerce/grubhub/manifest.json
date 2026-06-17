@@ -23,9 +23,9 @@
     "grubhub_token": {
       "type": "string",
       "title": "GRUBHUB_TOKEN",
-      "description": "Sets GRUBHUB_TOKEN for the Grubhub MCP server.",
+      "description": "Optional. Grubhub needs no user token: the CLI mints an anonymous bearer automatically. Set this only to pin a specific token.",
       "sensitive": true,
-      "required": true
+      "required": false
     }
   },
   "compatibility": {
