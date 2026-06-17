@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"grubhub-pp-cli/internal/grubhub"
+	"github.com/mvanhorn/printing-press-library/library/commerce/grubhub/internal/grubhub"
 )
 
 type dealRow struct {
