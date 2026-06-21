@@ -118,6 +118,18 @@ func newNovelSeriesCompareCmd(flags *rootFlags) *cobra.Command {
 			}
 
 			view := compareView{Series: args, Rows: rows, FetchFailures: failures}
+			// --csv: the compare view is nested ({series, rows:[{date, values{}}]}),
+			// which the array-based CSV renderer cannot flatten on its own — so the
+			// flag was silently ignored and JSON was emitted regardless. Flatten to
+			// one row per date (a column per series) and route through the shared CSV
+			// writer. Default JSON output is unchanged.
+			if flags.csv {
+				data, err := json.Marshal(flattenCompareRows(args, rows))
+				if err != nil {
+					return apiErr(fmt.Errorf("encoding compare rows for CSV: %w", err))
+				}
+				return printCSV(cmd.OutOrStdout(), data)
+			}
 			return flags.printJSON(cmd, view)
 		},
 	}
@@ -125,4 +137,20 @@ func newNovelSeriesCompareCmd(flags *rootFlags) *cobra.Command {
 	cmd.Flags().StringVar(&flagEnd, "end", "", "End date YYYY-MM-DD (observation_end)")
 	cmd.Flags().IntVar(&flagLimit, "limit", 0, "Max observations per series (0 = API default)")
 	return cmd
+}
+
+// flattenCompareRows turns the nested compare view into a flat table — one row
+// per date with a column per requested series — so the shared array-based CSV
+// renderer can emit it. A series with no value at a given date becomes an empty
+// string in that row.
+func flattenCompareRows(series []string, rows []compareRow) []map[string]string {
+	flat := make([]map[string]string, 0, len(rows))
+	for _, r := range rows {
+		m := map[string]string{"date": r.Date}
+		for _, id := range series {
+			m[id] = r.Values[id]
+		}
+		flat = append(flat, m)
+	}
+	return flat
 }

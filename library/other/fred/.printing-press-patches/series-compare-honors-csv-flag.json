@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "id": "series-compare-honors-csv-flag",
+  "applied_at": "2026-06-21",
+  "base_run_id": "20260615-012908",
+  "base_printing_press_version": "4.24.0",
+  "summary": "The series compare novel command must honor --csv by flattening its nested view to one row per date before the shared CSV writer; emitting only JSON is a defect.",
+  "reason": "compare's output is a nested view ({series, rows:[{date, values{}}]}), which the array-based printCSV cannot flatten, so the global --csv flag was silently ignored and JSON was returned regardless. A regen of this novel command must keep the flatten-then-printCSV path; the default (no-flag) JSON shape is intentionally unchanged for back-compat.",
+  "files": [
+    "internal/cli/series_compare.go"
+  ],
+  "validated_outcome": "`series compare UNRATE CPIAUCSL --csv` now emits CSV (header + one row per date); default JSON output is byte-identical to before. Unit test TestFlattenCompareRowsToCSV covers the flatten + CSV rendering."
+}
