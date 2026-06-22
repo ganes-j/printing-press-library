@@ -4,9 +4,14 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -75,6 +80,67 @@ func TestExitCode_UsageError_WrappedAsCode2(t *testing.T) {
 	wrapped := usageErr(errors.New("unknown flag: --foob"))
 	if got := ExitCode(wrapped); got != 2 {
 		t.Errorf("ExitCode(usageErr(...)) = %d, want 2 (POSIX usage convention)", got)
+	}
+}
+
+func TestAmplitudeJSONReadCommandsAllowAgentOutput(t *testing.T) {
+	var requested []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.URL.Path)
+		if got := r.Header.Get("Accept"); got != "application/json" {
+			t.Errorf("%s Accept = %q, want application/json", r.URL.Path, got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"id":%q,"name":"ok","description":"verbose"}`, r.URL.Path)
+	}))
+	defer server.Close()
+
+	t.Setenv("AMPLITUDE_BASE_URL", server.URL)
+	t.Setenv("AMPLITUDE_CONFIG", filepath.Join(t.TempDir(), "config.toml"))
+	t.Setenv("AMPLITUDE_USERNAME", "api-key")
+	t.Setenv("AMPLITUDE_PASSWORD", "secret-key")
+
+	cases := []struct {
+		name string
+		args []string
+		path string
+	}{
+		{"annotations", []string{"annotations"}, "/annotations"},
+		{"events", []string{"events"}, "/events/list"},
+		{"funnels", []string{"funnels"}, "/funnels"},
+		{"retention", []string{"retention"}, "/retention"},
+		{"revenue", []string{"revenue"}, "/revenue"},
+		{"segmentation", []string{"segmentation"}, "/segmentation"},
+		{"users", []string{"users", "user-1"}, "/users/user-1"},
+		{"usersearch", []string{"usersearch"}, "/usersearch"},
+		{"cohorts list", []string{"cohorts", "list"}, "/cohorts"},
+		{"cohorts get", []string{"cohorts", "get", "cohort-1"}, "/cohorts/cohort-1"},
+	}
+
+	for _, tc := range cases {
+		cmd := RootCmd()
+		var stdout, stderr bytes.Buffer
+		cmd.SetOut(&stdout)
+		cmd.SetErr(&stderr)
+		args := append([]string{"--agent", "--no-cache"}, tc.args...)
+		cmd.SetArgs(args)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("%s Execute() returned error: %v\nstderr=%s\nstdout=%s", tc.name, err, stderr.String(), stdout.String())
+		}
+		if strings.Contains(stdout.String(), "binary response cannot be rendered as structured output") {
+			t.Fatalf("%s still emitted binary structured-output refusal: %s", tc.name, stdout.String())
+		}
+		var envelope map[string]any
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("%s output is not JSON: %v\nstdout=%s", tc.name, err, stdout.String())
+		}
+		if envelope["results"] == nil {
+			t.Fatalf("%s output missing results envelope: %s", tc.name, stdout.String())
+		}
+		if len(requested) == 0 || requested[len(requested)-1] != tc.path {
+			t.Fatalf("%s requested path %q, want %q", tc.name, requested[len(requested)-1], tc.path)
+		}
 	}
 }
 
