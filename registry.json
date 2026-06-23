@@ -4863,6 +4863,76 @@
       }
     },
     {
+      "name": "expensify",
+      "category": "productivity",
+      "api": "Expensify",
+      "description": "File expenses and submit reports to Expensify from the command line",
+      "search_terms": [
+        "expensify",
+        "expensify-pp-cli",
+        "File expenses and submit reports to Expensify from the command line",
+        "Quick expense from natural language",
+        "expense quick",
+        "File an expense with one line: amount, merchant, and category parsed from a short prompt — no forms, no web UI.",
+        "Draft report from date range",
+        "report draft",
+        "Create a report and auto-attach every un-reported expense from a date range in a single command.",
+        "What's the damage",
+        "damage",
+        "Single-glance summary: total expensed, pending, approved, paid for the current month (or a custom range).",
+        "Expense from bank line",
+        "expense from-line",
+        "Paste a raw bank or card CSV row and the CLI extracts date/merchant/amount/currency and files the expense.",
+        "Offline expense search",
+        "expense search",
+        "FTS5 search over all your expenses by merchant, comment, category, or tag. Regex-friendly.",
+        "Missing receipts",
+        "expense missing-receipts",
+        "Lists expenses without attached receipts so you can catch them before submitting a report.",
+        "Monthly rollup",
+        "expense rollup",
+        "Pivot-table expenses by category, tag, or merchant for any time range.",
+        "Duplicate detection",
+        "expense dupes",
+        "Finds expenses that look like duplicates by (merchant, amount, date±window).",
+        "Bulk expense create",
+        "expense bulk",
+        "File a whole list of expenses in a single Expense_Create request.",
+        "Submit and wait",
+        "report submit",
+        "Submit a report and optionally poll until it leaves SUBMITTED."
+      ],
+      "path": "library/productivity/expensify",
+      "release": {
+        "cli_name": "expensify-pp-cli",
+        "version": "",
+        "released_at": "",
+        "source_commit": ""
+      },
+      "printer": "mvanhorn",
+      "printer_name": "Matt Van Horn",
+      "creator": {
+        "handle": "mvanhorn",
+        "name": "Matt Van Horn"
+      },
+      "mcp": {
+        "binary": "expensify-pp-mcp",
+        "transports": [
+          "stdio"
+        ],
+        "tool_count": 39,
+        "public_tool_count": 0,
+        "auth_type": "api_key",
+        "env_vars": [
+          "EXPENSIFY_AUTH_TOKEN",
+          "EXPENSIFY_PARTNER_USER_ID",
+          "EXPENSIFY_PARTNER_USER_SECRET"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "internal"
+      }
+    },
+    {
       "name": "facebook-marketplace",
       "category": "commerce",
       "api": "Facebook Marketplace",
