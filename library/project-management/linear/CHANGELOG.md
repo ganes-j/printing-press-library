@@ -2,6 +2,10 @@
 
 This file is maintained by printing-press-library release automation. Do not hand-edit release sections in normal PRs.
 
+## 2026.6.6 - 2026-06-24
+
+- feat(linear): resolve portfolio names for issue writes (#1317).
+
 ## 2026.6.5 - 2026-06-22
 
 - fix(linear): require Go 1.26.4 for vuln-clean builds (#1297).

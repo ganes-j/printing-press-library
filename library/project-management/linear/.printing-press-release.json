@@ -2,17 +2,17 @@
   "schema_version": 1,
   "slug": "linear",
   "cli_name": "linear-pp-cli",
-  "version": "2026.6.5",
-  "released_at": "2026-06-22T21:39:05Z",
-  "source_commit": "6b4115592e47e2fd883bb4d26a934732151e071b",
+  "version": "2026.6.6",
+  "released_at": "2026-06-24T00:04:38Z",
+  "source_commit": "44868dbe28bbadcf62a2855883e31f495e048b8b",
   "printing_press_version": "4.9.0",
   "run_id": "20260518-232543",
   "changes": [
     {
-      "title": "fix(linear): require Go 1.26.4 for vuln-clean builds",
-      "pr": 1297,
-      "url": "https://github.com/mvanhorn/printing-press-library/pull/1297",
-      "commit": "6b4115592e47e2fd883bb4d26a934732151e071b"
+      "title": "feat(linear): resolve portfolio names for issue writes",
+      "pr": 1317,
+      "url": "https://github.com/mvanhorn/printing-press-library/pull/1317",
+      "commit": "44868dbe28bbadcf62a2855883e31f495e048b8b"
     }
   ]
 }
