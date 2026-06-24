@@ -2210,6 +2210,53 @@
       }
     },
     {
+      "name": "boardgamegeek",
+      "category": "media-and-entertainment",
+      "api": "BoardGameGeek",
+      "description": "Look up board games, expansions, hot rankings, user collections, and logged plays from BoardGameGeek's official XMLAPI2 — search, full game detail with stats and rankings, and the live hot list, all without a browser.",
+      "search_terms": [
+        "boardgamegeek",
+        "boardgamegeek-pp-cli",
+        "Look up board games, expansions, hot rankings, user collections, and logged plays from BoardGameGeek's official XMLAPI2 — search, full game detail with stats and rankings, and the live hot list, all without a browser.",
+        "Register an application at https://boardgamegeek.com/applications (Non-commercial licenses are free), wait for approval, then create a token under your application and send it as Authorization: Bearer <token>.",
+        "Full-Text Game Search",
+        "search",
+        "FTS5 search across locally synced games, expansions, and accessories",
+        "Requires a domain SQLite index over synced thing rows; the XMLAPI2 search is name-prefix only, so offline full-text lookup is something the raw API cannot do",
+        "Local Analytics",
+        "analytics",
+        "Aggregate queries (group-by, counts, averages) over locally synced BoardGameGeek data",
+        "Only possible with a local SQLite store populated from the API; BGG exposes no aggregate endpoints",
+        "Compound Workflows",
+        "workflow",
+        "Chain multiple API operations (search then thing-detail then collection) in one invocation",
+        "Combines several boardgamegeek.com/xmlapi2 calls behind one agent-friendly command"
+      ],
+      "path": "library/media-and-entertainment/boardgamegeek",
+      "printer": "coopdogGGs",
+      "printer_name": "Ryan Cooper",
+      "creator": {
+        "handle": "coopdogGGs",
+        "name": "Ryan Cooper"
+      },
+      "mcp": {
+        "binary": "boardgamegeek-pp-mcp",
+        "transports": [
+          "stdio",
+          "http"
+        ],
+        "tool_count": 8,
+        "public_tool_count": 0,
+        "auth_type": "bearer_token",
+        "env_vars": [
+          "BGG_TOKEN",
+          "BOARDGAMEGEEK_TOKEN"
+        ],
+        "mcp_ready": "full",
+        "spec_format": "openapi3"
+      }
+    },
+    {
       "name": "booking-com",
       "category": "travel",
       "api": "Booking.com",
@@ -8157,9 +8204,9 @@
       "path": "library/project-management/linear",
       "release": {
         "cli_name": "linear-pp-cli",
-        "version": "2026.6.5",
-        "released_at": "2026-06-22T21:39:05Z",
-        "source_commit": "6b4115592e47e2fd883bb4d26a934732151e071b"
+        "version": "2026.6.6",
+        "released_at": "2026-06-24T00:04:38Z",
+        "source_commit": "44868dbe28bbadcf62a2855883e31f495e048b8b"
       },
       "printer": "mvanhorn",
       "printer_name": "Matt Van Horn",
