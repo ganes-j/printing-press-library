@@ -249,6 +249,10 @@ func newShieldAskCmd(flags *rootFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			rehydratedRun, err := rehydrateRunForOutput(cmd.Context(), s, run, answer)
+			if err != nil {
+				return err
+			}
 			audit := store.AuditRecord{
 				ID: store.NewID("audit"), RunID: run.ID, Command: "shield ask",
 				PayloadSHA256: sha256Hex([]byte(prepared.Payload)), ByteCount: len(prepared.Payload), Model: model, GuardModel: guard,
@@ -258,7 +262,7 @@ func newShieldAskCmd(flags *rootFlags) *cobra.Command {
 				return err
 			}
 			if flags.asJSON || flags.agent {
-				return outputJSON(cmd, map[string]any{"answer": answer, "run": run, "audit": audit})
+				return outputJSON(cmd, map[string]any{"answer": answer, "run": rehydratedRun, "audit": audit})
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), answer)
 			fmt.Fprintf(cmd.ErrOrStderr(), "privacy receipt %s\n", audit.ID)
@@ -295,6 +299,19 @@ func prepareShieldAskPayload(ctx context.Context, s *store.Store, data, question
 		MaskedEntities: len(redactedData.Entities) + len(redactedQuestion.Entities),
 		Leaks:          shield.Detect(payload),
 	}, nil
+}
+
+func rehydrateRunForOutput(ctx context.Context, s *store.Store, run store.RunRecord, answer string) (store.RunRecord, error) {
+	rehydrated := run
+	rehydrated.Answer = answer
+	if rehydrated.Reasoning != "" {
+		reasoning, err := shield.Rehydrate(ctx, s, rehydrated.Reasoning)
+		if err != nil {
+			return store.RunRecord{}, err
+		}
+		rehydrated.Reasoning = reasoning
+	}
+	return rehydrated, nil
 }
 
 func newShieldAuditCmd(flags *rootFlags) *cobra.Command {

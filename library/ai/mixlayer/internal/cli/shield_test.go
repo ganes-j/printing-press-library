@@ -70,6 +70,26 @@ func TestWriteShieldIngestResultIncludesCorpusInJSONMode(t *testing.T) {
 	}
 }
 
+func TestShieldAskRunOutputRehydratesAnswerAndReasoning(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(filepath.Join(t.TempDir(), "data.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SaveVaultEntry(ctx, store.VaultEntry{Token: "EMAIL_3f9a4abc", Value: "alice@example.com", Kind: "EMAIL"}); err != nil {
+		t.Fatal(err)
+	}
+	run := store.RunRecord{Answer: "Email EMAIL_3f9a4abc", Reasoning: "Saw EMAIL_3f9a4abc"}
+	got, err := rehydrateRunForOutput(ctx, s, run, "Email alice@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Answer != "Email alice@example.com" || got.Reasoning != "Saw alice@example.com" {
+		t.Fatalf("rehydrated run = %#v", got)
+	}
+}
+
 func TestShieldScanMaxRiskHelpClarifiesPerEntityMax(t *testing.T) {
 	cmd := newShieldScanCmd(&rootFlags{})
 	flag := cmd.Flags().Lookup("max-risk")
