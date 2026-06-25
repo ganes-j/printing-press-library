@@ -3542,6 +3542,12 @@
         "Flag recently purchased items still inside a return window you set."
       ],
       "path": "library/commerce/costco",
+      "release": {
+        "cli_name": "costco-pp-cli",
+        "version": "2026.6.1",
+        "released_at": "2026-06-25T18:03:52Z",
+        "source_commit": "18e901445f3beccde15a296e05dfbc3951b79611"
+      },
       "printer": "richie305",
       "printer_name": "David Richie",
       "creator": {
@@ -13167,6 +13173,31 @@
         ],
         "mcp_ready": "full",
         "spec_format": "openapi3"
+      }
+    },
+    {
+      "name": "running-race-results",
+      "category": "other",
+      "api": "Running Race Results",
+      "description": "Look up running race results across NYRR, Mika Timing, Athlinks, and RaceResult by fuzzy race name, bib, runner name, or athlete history.",
+      "search_terms": [
+        "running-race-results",
+        "Running Race Results",
+        "running-race-results-pp-cli",
+        "Look up running race results across NYRR, Mika Timing, Athlinks, and RaceResult by fuzzy race name, bib, runner name, or athlete history.",
+        "Fuzzy race result lookup",
+        "lookup",
+        "Resolve a human race name to the right provider and edition, then return a unified runner result by bib or runner name.",
+        "Cross-event athlete history",
+        "athlete",
+        "Show a runner's race history across Athlinks or NYRR using a name search, racer id, or the optional Athlinks current-user token."
+      ],
+      "path": "library/other/running-race-results",
+      "printer": "jiahongc",
+      "printer_name": "Jiahong Chen",
+      "creator": {
+        "handle": "jiahongc",
+        "name": "Jiahong Chen"
       }
     },
     {
