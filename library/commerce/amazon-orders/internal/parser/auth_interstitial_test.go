@@ -117,6 +117,26 @@ func TestDetectOrderHistoryPage(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "german empty orders title",
+			html: `<html><head><title>Ihre Bestellungen</title></head><body></body></html>`,
+			want: true,
+		},
+		{
+			name: "french empty orders title",
+			html: `<html><head><title>Vos commandes</title></head><body></body></html>`,
+			want: true,
+		},
+		{
+			name: "japanese empty orders title",
+			html: `<html><head><title>注文履歴</title></head><body></body></html>`,
+			want: true,
+		},
+		{
+			name: "chinese empty orders title",
+			html: `<html><head><title>我的订单</title></head><body></body></html>`,
+			want: true,
+		},
+		{
 			name: "order card",
 			html: `<html><body><div class="order-card js-order-card">ORDER # 111-1111111-1111111</div></body></html>`,
 			want: true,

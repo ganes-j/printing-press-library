@@ -30,6 +30,16 @@ var orderHistoryTitleMarkers = []string{
 	"your orders",
 	"mis pedidos",
 	"tus pedidos",
+	"meine bestellungen",
+	"ihre bestellungen",
+	"vos commandes",
+	"mes commandes",
+	"i miei ordini",
+	"meus pedidos",
+	"seus pedidos",
+	"注文履歴",
+	"我的订单",
+	"我的訂單",
 }
 
 // authInterstitialPageError describes an Amazon sign-in, account-claim, CAPTCHA,
