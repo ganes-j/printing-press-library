@@ -35,7 +35,7 @@ func newOrdersInvoiceCmd(flags *rootFlags) *cobra.Command {
 			htmlRequestParams["orderID"] = args[0]
 			params := map[string]string{}
 			params["orderID"] = args[0]
-			data, prov, err := resolveRead(cmd.Context(), c, flags, "orders", false, path, params, nil)
+			data, prov, err := resolveRead(cmd.Context(), c, flags, "orders", false, path, params, nil, args[0])
 			if err != nil {
 				return classifyAPIError(err, flags)
 			}
