@@ -177,11 +177,11 @@ func TestExtract_UnrelatedTeachesProduceNoPattern(t *testing.T) {
 	}
 }
 
-// TestQueryStructural_StripsAllEntities exercises U4 of plan
-// 2026-05-25-004. queryStructural now takes a slice of entities and
-// strips every one, not just members[0].queryEntities[0]. Without
-// this, multi-entity teaches lived in different structural groups
-// purely because the second entity differed.
+// TestQueryStructural_StripsAllEntities locks the multi-entity strip
+// contract: queryStructural takes a slice of entities and strips every
+// one, not just the first. Without this, multi-entity teaches lived in
+// different structural groups purely because the second entity
+// differed.
 func TestQueryStructural_StripsAllEntities(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -192,27 +192,27 @@ func TestQueryStructural_StripsAllEntities(t *testing.T) {
 	}{
 		{
 			name:     "single entity",
-			pattern:  "mariners doing season",
-			entities: []string{"mariners"},
-			want:     "doing season",
+			pattern:  "alpha doing widget",
+			entities: []string{"alpha"},
+			want:     "doing widget",
 		},
 		{
 			name:     "two entities both stripped",
-			pattern:  "mariners vs yankees tonight",
-			entities: []string{"mariners", "yankees"},
+			pattern:  "alpha vs bravo tonight",
+			entities: []string{"alpha", "bravo"},
 			want:     "tonight vs",
 		},
 		{
 			name:     "case-insensitive stripping",
-			pattern:  "Mariners vs Yankees tonight",
-			entities: []string{"Mariners", "Yankees"},
+			pattern:  "Alpha vs Bravo tonight",
+			entities: []string{"Alpha", "Bravo"},
 			want:     "tonight vs",
 		},
 		{
 			name:     "empty entities leaves pattern",
-			pattern:  "doing season year",
+			pattern:  "doing widget thing",
 			entities: nil,
-			want:     "doing season year",
+			want:     "doing thing widget",
 		},
 	}
 	for _, tc := range cases {
@@ -225,22 +225,63 @@ func TestQueryStructural_StripsAllEntities(t *testing.T) {
 	}
 }
 
-// TestExtract_MultiEntity_GroupsButSkipsInference confirms a
-// multi-entity teach lives in the same structural group as its
-// shape-peers (which would enable future multi-entity binding) but
-// does NOT emit a single-slot template, since tryExactBinding only
-// indexes queryEntities[0].
+// TestExtract_SingleEntityInference_ThirdQueryMatchesTemplate is a
+// regression check that two single-entity teaches in the same shape
+// still produce a template after the slice-signature refactor. The
+// emitted query_template should match the structural form of a third
+// same-shape query.
+func TestExtract_SingleEntityInference_ThirdQueryMatchesTemplate(t *testing.T) {
+	t.Parallel()
+	db := openExtractTestDB(t)
+	insertLookup(t, db, "source_type", "Alpha", "AL")
+	insertLookup(t, db, "source_type", "Bravo", "BR")
+	insertLearning(t, db, "alpha widget", `["Alpha"]`, "PREFIX-AL", "widgets", "")
+	insertLearning(t, db, "bravo widget", `["Bravo"]`, "PREFIX-BR", "widgets", "")
+
+	if _, err := Extract(db, []string{"source_type"}); err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	rows, err := List(db, ListFilter{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var found *Pattern
+	for i := range rows {
+		if rows[i].EntityKind == "source_type" && rows[i].Strategy == StrategySubstitute {
+			found = &rows[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("no source_type/substitute pattern found in %+v", rows)
+	}
+	// The structural form of a third single-entity query "charlie
+	// widget" with entity ["Charlie"] strips "charlie" and appends
+	// {entity}, producing "widget {entity}" (alphabetized). That must
+	// equal the inferred QueryTemplate.
+	wantTemplate := buildQueryTemplate("charlie widget", []string{"Charlie"})
+	if found.QueryTemplate != wantTemplate {
+		t.Errorf("query_template = %q, want %q (third-query match)", found.QueryTemplate, wantTemplate)
+	}
+}
+
+// TestExtract_MultiEntity_NoSingleSlotPattern confirms a multi-entity
+// teach lives in the same structural group as its shape-peers (which
+// enables future multi-entity binding) but does NOT emit a single-slot
+// template, since tryExactBinding / tryPrefixBinding only index
+// queryEntities[0]. The anyMulti guard skips inference for any group
+// containing a multi-entity member.
 func TestExtract_MultiEntity_NoSingleSlotPattern(t *testing.T) {
 	t.Parallel()
 	db := openExtractTestDB(t)
-	insertLookup(t, db, "team", "Mariners", "SEA")
-	insertLookup(t, db, "team", "Yankees", "NYY")
-	insertLookup(t, db, "team", "Mets", "NYM")
-	insertLookup(t, db, "team", "Cubs", "CHC")
-	insertLearning(t, db, "tonight mariners vs yankees", `["Mariners","Yankees"]`, "ev1", "events", "")
-	insertLearning(t, db, "tonight mets vs cubs", `["Mets","Cubs"]`, "ev2", "events", "")
+	insertLookup(t, db, "source_type", "Alpha", "AL")
+	insertLookup(t, db, "source_type", "Bravo", "BR")
+	insertLookup(t, db, "source_type", "Charlie", "CH")
+	insertLookup(t, db, "source_type", "Delta", "DE")
+	insertLearning(t, db, "tonight alpha vs bravo", `["Alpha","Bravo"]`, "ev1", "events", "")
+	insertLearning(t, db, "tonight charlie vs delta", `["Charlie","Delta"]`, "ev2", "events", "")
 
-	if _, err := Extract(db, []string{"team"}); err != nil {
+	if _, err := Extract(db, []string{"source_type"}); err != nil {
 		t.Fatalf("extract: %v", err)
 	}
 	rows, _ := List(db, ListFilter{})
