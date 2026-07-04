@@ -26,6 +26,9 @@ var (
 	// searchPrevNextRE marks the pagination block; everything after it is
 	// pagination links and sponsored /r2/ promos, never results.
 	searchPrevNextRE = regexp.MustCompile(`(?i)<div class="prevnext">`)
+	// searchPermalinkRE matches Techmeme story-permalink hrefs (the "In
+	// context" links inside iinf blocks) that must never become records.
+	searchPermalinkRE = regexp.MustCompile(`(?i)techmeme\.com/\d{6}/p\d+`)
 	// searchCanvasRE / searchSponsorsRE bound the results region. Nav chrome
 	// before the results canvas and sponsor promos after it are never results;
 	// zero-hit pages carry neither an items div nor a prevnext block, so these
@@ -143,6 +146,14 @@ func parseSearchResults(page string) ([]searchResult, bool) {
 		if strings.Contains(href, "/r2/") {
 			continue
 		}
+		// Techmeme story permalinks (the "In context" link inside each iinf
+		// block, shape techmeme.com/YYMMDD/pNN#...) sit positionally after
+		// their own iinf match, so an unfiltered one would pair with the NEXT
+		// story's date block and misattribute its link. Match the href shape,
+		// not the anchor text -- a renamed link label must not defeat this.
+		if searchPermalinkRE.MatchString(href) {
+			continue
+		}
 		if strings.Contains(href, "techmeme.com/") && strings.Contains(title, "context") {
 			continue
 		}
@@ -177,9 +188,10 @@ func parseSearchResults(page string) ([]searchResult, bool) {
 	}
 
 	// Dates were present (the early return above handles len(dates) == 0),
-	// so zero paired results means the anchor side of the pairing failed —
-	// the other direction of the markup-shift guard.
-	return results, len(results) == 0
+	// so any iinf block that failed to pair with an anchor means the anchor
+	// side of the pairing is broken or partially broken -- warn on partial
+	// failures too, not only on a total pairing collapse.
+	return results, len(results) < len(dates)
 }
 
 // cleanSearchTitle strips tags and decodes HTML entities in anchor text

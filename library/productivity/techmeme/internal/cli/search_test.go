@@ -513,3 +513,60 @@ func TestSearchHelpWires(t *testing.T) {
 		}
 	}
 }
+
+// A Techmeme story-permalink anchor (the "In context" link inside each iinf
+// block) sits positionally after its own iinf match; if it survived the
+// candidate filter it would pair with the NEXT story's date block and
+// misattribute that story's link. The filter must key on the permalink href
+// shape, so a renamed label ("View article") cannot defeat it.
+func TestParseSearchResults_RenamedPermalinkStillExcluded(t *testing.T) {
+	page := `<div class="items">
+<A HREF="https://www.example-pub.com/">Example Publication</A>
+<A HREF="https://example-pub.com/story-one">First story headline about the topic today</A>
+<div class="iinf">
+<span class="idate">May 22, 2025, 11:35 AM</span>
+<span class="icontext"><a href="https://www.techmeme.com/250522/p26#a250522p26">View article</a></span>
+</div>
+<A HREF="https://www.other-pub.com/">Other Publication</A>
+<A HREF="https://other-pub.com/story-two">Second story headline about the topic today</A>
+<div class="iinf">
+<span class="idate">May 13, 2025, 9:00 AM</span>
+</div>
+<div class="prevnext"></div>
+</div>`
+	results, warn := parseSearchResults(page)
+	if warn {
+		t.Errorf("fully paired page must not set the guard flag")
+	}
+	if len(results) != 2 {
+		t.Fatalf("want 2 records, got %d: %+v", len(results), results)
+	}
+	if results[0].Link != "https://example-pub.com/story-one" {
+		t.Errorf("story 1 link misattributed: %q", results[0].Link)
+	}
+	if results[1].Link != "https://other-pub.com/story-two" {
+		t.Errorf("story 2 link misattributed (permalink leak): %q", results[1].Link)
+	}
+}
+
+// Partial pairing failures must warn too: when some iinf blocks pair and
+// others find no preceding candidate anchor, the caller sees incomplete data
+// and needs the markup-shift signal.
+func TestParseSearchResults_PartialPairingSetsGuard(t *testing.T) {
+	page := `<div class="items">
+<A HREF="https://example-pub.com/story-one">First story headline about the topic today</A>
+<div class="iinf">
+<span class="idate">May 22, 2025</span>
+</div>
+<div class="iinf">
+<span class="idate">May 13, 2025</span>
+</div>
+</div>`
+	results, warn := parseSearchResults(page)
+	if len(results) != 1 {
+		t.Fatalf("want 1 paired record, got %d: %+v", len(results), results)
+	}
+	if !warn {
+		t.Errorf("an unpaired iinf block must set the guard flag (partial failure)")
+	}
+}
