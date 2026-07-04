@@ -175,6 +175,27 @@ func TestParseSearchResults_AnchorsWithoutIinfSetsGuard(t *testing.T) {
 	}
 }
 
+// Guard, other direction: iinf date blocks with zero candidate anchors also
+// means the markup shifted (the anchor shape changed under the parser). The
+// flag must fire instead of silently yielding empty results; this also
+// exercises the story == nil defensive branch in the pairing loop.
+func TestParseSearchResults_DatesWithoutAnchorsSetsGuard(t *testing.T) {
+	page := `<div class="items">
+<DIV CLASS="item">
+<div class="iinf">
+<SPAN CLASS="idate">May 22, 2025, 11:35 AM</SPAN>
+</div>
+</DIV>
+</div>`
+	results, warn := parseSearchResults(page)
+	if len(results) != 0 {
+		t.Errorf("no candidate anchors: want 0 records, got %d: %+v", len(results), results)
+	}
+	if !warn {
+		t.Errorf("iinf blocks with zero candidate anchors must set the guard flag")
+	}
+}
+
 // A page with neither anchors nor iinf blocks (a genuine zero-hit results
 // page) must not fire the guard.
 func TestParseSearchResults_EmptyPageNoGuard(t *testing.T) {
@@ -262,6 +283,25 @@ func TestFilterSearchByDays(t *testing.T) {
 
 	if got := filterSearchByDays(in, 0, now); len(got) != 3 {
 		t.Errorf("days=0: want all 3 records (no filtering), got %d", len(got))
+	}
+}
+
+// Boundary pin: a record dated exactly N days before now must survive --days N
+// regardless of now's time-of-day or zone. Record dates parse to midnight UTC,
+// so a cutoff derived from the raw instant (carrying 23:59 and a non-UTC zone)
+// would drop the boundary record; the filter must compare calendar dates in
+// UTC instead.
+func TestFilterSearchByDays_ExactBoundaryIncluded(t *testing.T) {
+	zone := time.FixedZone("UTC-8", -8*60*60)
+	now := time.Date(2026, 7, 4, 23, 59, 0, 0, zone)
+	boundary := now.UTC().AddDate(0, 0, -30).Format("2006-01-02") // exactly 30 days ago
+
+	in := []searchResult{
+		{Num: 1, Headline: "boundary", Date: boundary},
+	}
+	got := filterSearchByDays(in, 30, now)
+	if len(got) != 1 || got[0].Headline != "boundary" {
+		t.Fatalf("record dated exactly 30 days before now must survive --days 30, got %+v", got)
 	}
 }
 
@@ -362,9 +402,14 @@ func TestRenderSearchResults_SelectAndCompact(t *testing.T) {
 		t.Errorf("--select headline,date should drop link: %v", sel[0])
 	}
 
-	// --json --compact
+	// --json --compact (the shape --agent implies). The shared compaction
+	// allow-list contains none of searchResult's keys, so without the
+	// search-local select default every record would compact to {} — the
+	// bug that made `search --agent` return [{}]. Assert the real field
+	// values survive, not just that the array parses.
 	cmd2, out2, _ := newRenderTestCmd()
-	if err := renderSearchResults(cmd2, &rootFlags{asJSON: true, compact: true}, "q", results, false); err != nil {
+	compactFlags := &rootFlags{asJSON: true, compact: true}
+	if err := renderSearchResults(cmd2, compactFlags, "q", results, false); err != nil {
 		t.Fatalf("--compact render error: %v", err)
 	}
 	var comp []map[string]any
@@ -372,7 +417,19 @@ func TestRenderSearchResults_SelectAndCompact(t *testing.T) {
 		t.Fatalf("--compact output invalid JSON: %v\n%q", err, out2.String())
 	}
 	if len(comp) != 1 {
-		t.Errorf("--compact: want 1 record, got %d", len(comp))
+		t.Fatalf("--compact: want 1 record, got %d", len(comp))
+	}
+	if comp[0]["headline"] != "A perfectly plausible headline" {
+		t.Errorf("--compact: headline = %v, want the populated headline (record compacted to {}?)", comp[0]["headline"])
+	}
+	if comp[0]["date"] != "2026-07-01" {
+		t.Errorf("--compact: date = %v, want 2026-07-01", comp[0]["date"])
+	}
+	if comp[0]["link"] != "https://example.com/a" {
+		t.Errorf("--compact: link = %v, want https://example.com/a", comp[0]["link"])
+	}
+	if compactFlags.selectFields != "" {
+		t.Errorf("--compact: shared flags struct was mutated (selectFields = %q)", compactFlags.selectFields)
 	}
 
 	// Zero hits with --compact must still be a parseable empty array.
@@ -404,6 +461,36 @@ func TestRenderSearchResults_MarkupShiftWarningOnStderr(t *testing.T) {
 	var arr []map[string]any
 	if err := json.Unmarshal(out.Bytes(), &arr); err != nil {
 		t.Fatalf("stdout must stay a pure JSON array when warning fires: %v\n%q", err, out.String())
+	}
+}
+
+// Human mode renders a DATE column: the header appears and each record's ISO
+// date value lands in its row. Also pins the warn + human-mode combination:
+// the markup-shift warning goes to stderr and the table still renders.
+func TestRenderSearchResults_HumanModeShowsDateColumn(t *testing.T) {
+	results := []searchResult{
+		{Num: 1, Source: "example.com", Headline: "A perfectly plausible headline", Link: "https://example.com/a", Date: "2026-07-01"},
+		{Num: 2, Source: "example.org", Headline: "Another plausible headline here", Link: "https://example.org/b", Date: "2025-12-31"},
+	}
+
+	cmd, out, errBuf := newRenderTestCmd()
+	if err := renderSearchResults(cmd, &rootFlags{}, "q", results, true); err != nil {
+		t.Fatalf("renderSearchResults error: %v", err)
+	}
+	table := out.String()
+	if !strings.Contains(table, "DATE") {
+		t.Errorf("human mode missing DATE header:\n%s", table)
+	}
+	for _, want := range []string{"2026-07-01", "2025-12-31"} {
+		if !strings.Contains(table, want) {
+			t.Errorf("human mode missing date value %q:\n%s", want, table)
+		}
+	}
+	if !strings.Contains(errBuf.String(), "markup may have changed") {
+		t.Errorf("expected markup-shift warning on stderr in human mode, got %q", errBuf.String())
+	}
+	if strings.Contains(table, "markup may have changed") {
+		t.Errorf("warning leaked onto stdout: %q", table)
 	}
 }
 

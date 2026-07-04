@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	// searchAnchorRE matches href-first anchors in the results region. Techmeme
-	// renders result content (publication cites and headlines) as uppercase
-	// <A HREF="…">text</A>; the case-insensitive match keeps the parser working
-	// if that casing shifts, since structural pairing filters non-story anchors.
-	searchAnchorRE = regexp.MustCompile(`(?i)<A HREF="([^"]+)"[^>]*>([^<]+)</A>`)
+	// searchAnchorRE matches anchors in the results region. Techmeme renders
+	// result content (publication cites and headlines) as uppercase
+	// <A HREF="…">text</A>; the case-insensitive match and the tolerance for
+	// attributes before HREF keep the parser working if that markup shifts,
+	// since structural pairing filters non-story anchors this admits.
+	searchAnchorRE = regexp.MustCompile(`(?i)<A\s+[^>]*?HREF="([^"]+)"[^>]*>([^<]+)</A>`)
 	// searchIinfDateRE captures the idate text inside each result's iinf block
 	// (e.g. "May 22, 2025, 11:35 AM").
 	searchIinfDateRE = regexp.MustCompile(`(?is)<div class="iinf">\s*<span class="idate">([^<]*)</span>`)
@@ -90,11 +91,11 @@ Use --days N to keep only results from the last N days.`,
 				return classifyAPIError(err, flags)
 			}
 
-			results, anchorsWithoutDates := parseSearchResults(string(data))
+			results, markupShift := parseSearchResults(string(data))
 			if days > 0 {
 				results = filterSearchByDays(results, days, time.Now())
 			}
-			return renderSearchResults(cmd, flags, query, results, anchorsWithoutDates)
+			return renderSearchResults(cmd, flags, query, results, markupShift)
 		},
 	}
 
@@ -111,9 +112,10 @@ Use --days N to keep only results from the last N days.`,
 // block (nav links, publication cites) are consumed without being emitted.
 // Everything after the prevnext pagination div is ignored.
 //
-// The second return value reports that candidate anchors were found but no
-// iinf date blocks — a signal that Techmeme's markup shifted and the parse is
-// likely silently incomplete.
+// The second return value reports that the results region shape was not
+// recognized: candidate anchors with no iinf date blocks, or iinf date blocks
+// that paired with no candidate anchors. Either direction signals that
+// Techmeme's markup shifted and the parse is likely silently incomplete.
 func parseSearchResults(page string) ([]searchResult, bool) {
 	// Scope the scan to the results canvas when the markers are present:
 	// header/nav chrome before it, sponsor promos after it, and everything
@@ -174,7 +176,10 @@ func parseSearchResults(page string) ([]searchResult, bool) {
 		})
 	}
 
-	return results, false
+	// Dates were present (the early return above handles len(dates) == 0),
+	// so zero paired results means the anchor side of the pairing failed —
+	// the other direction of the markup-shift guard.
+	return results, len(results) == 0
 }
 
 // cleanSearchTitle strips tags and decodes HTML entities in anchor text
@@ -207,11 +212,18 @@ func parseSearchDate(s string) string {
 // filterSearchByDays keeps results dated within the last N days relative to
 // now. Undated records are dropped when the filter is active because their
 // recency cannot be verified. days <= 0 disables filtering.
+//
+// Comparison is at day granularity in UTC: record dates parse to midnight
+// UTC, so the cutoff must also be a midnight-UTC calendar date. Deriving it
+// from the raw instant would carry now's time-of-day and zone into the
+// comparison and drop records dated exactly N days ago whenever now is past
+// midnight.
 func filterSearchByDays(results []searchResult, days int, now time.Time) []searchResult {
 	if days <= 0 {
 		return results
 	}
-	cutoff := now.AddDate(0, 0, -days)
+	y, m, d := now.UTC().Date()
+	cutoff := time.Date(y, m, d, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -days)
 	out := make([]searchResult, 0, len(results))
 	for _, r := range results {
 		if r.Date == "" {
@@ -231,15 +243,28 @@ func filterSearchByDays(results []searchResult, days int, now time.Time) []searc
 // JSON array on stdout — an empty array for zero hits, never prose — so piped
 // agent consumers can rely on parseable output. Human mode keeps the friendly
 // zero-results line and a table otherwise.
-func renderSearchResults(cmd *cobra.Command, flags *rootFlags, query string, results []searchResult, warnNoDates bool) error {
-	if warnNoDates {
-		fmt.Fprintln(cmd.ErrOrStderr(), "warning: search results page contained candidate anchors but no iinf date blocks; Techmeme markup may have changed and results may be incomplete")
+func renderSearchResults(cmd *cobra.Command, flags *rootFlags, query string, results []searchResult, warnMarkupShift bool) error {
+	if warnMarkupShift {
+		fmt.Fprintln(cmd.ErrOrStderr(), "warning: search results region shape unrecognized (anchors and iinf date blocks did not pair); Techmeme markup may have changed and results may be incomplete")
 	}
 
 	if flags.asJSON {
 		if results == nil {
 			// json.Marshal renders a nil slice as null, not [].
 			results = []searchResult{}
+		}
+		// The shared --compact allow-list (compactListFields) keeps generic
+		// high-gravity keys (id, name, title, …) and none of searchResult's
+		// JSON keys, so compaction — including --agent, which implies
+		// --compact — would strip every record to {}. An explicit --select
+		// already wins over --compact in printOutputWithFlags, so piggyback
+		// on that precedence: default the selection to every searchResult
+		// field when compacting without a user-supplied --select. The copy
+		// keeps the shared flags struct unmutated.
+		if flags.compact && flags.selectFields == "" {
+			f := *flags
+			f.selectFields = "num,source,headline,link,date"
+			flags = &f
 		}
 		return printJSONFiltered(cmd.OutOrStdout(), results, flags)
 	}
