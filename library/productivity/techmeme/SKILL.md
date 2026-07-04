@@ -153,6 +153,14 @@ techmeme-pp-cli search 'Apple' --agent --select title,source,link
 
 Find all recent Techmeme headlines about Apple
 
+### Windowed archive search
+
+```bash
+techmeme-pp-cli search 'Apple' --days 30 --json
+```
+
+`search` queries Techmeme's live archive (back to ~2005). Each JSON record carries a `date` field (ISO `YYYY-MM-DD`, empty string when the results page shows no parseable date). `--days N` keeps only results dated within the last N days (undated records are dropped when the filter is active). Zero hits in JSON mode emit an empty JSON array `[]` on stdout, so piped consumers always get valid JSON.
+
 ### Media landscape
 
 ```bash
