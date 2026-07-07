@@ -213,8 +213,8 @@ func parseAppointmentList(body string) []map[string]any {
 // resolvePatientID pulls the authenticated patient's id from an existing
 // appointment (the payload carries patient_id).
 func (b *janeBooker) resolvePatientID(ctx context.Context) string {
-	_, body, _, err := janeReqAccept(ctx, b.hc, b.base+"/api/v2/appointments")
-	if err != nil {
+	status, body, _, err := janeReqAccept(ctx, b.hc, b.base+"/api/v2/appointments")
+	if err != nil || status >= 400 {
 		return ""
 	}
 	for _, a := range parseAppointmentList(body) {
@@ -270,9 +270,15 @@ type apptDetail struct {
 // treatment/staff/location for the given appointment id (needed to rebook it
 // at a new time during reschedule).
 func (b *janeBooker) appointmentByID(ctx context.Context, id int) (apptDetail, error) {
-	_, body, _, err := janeReqAccept(ctx, b.hc, b.base+"/api/v2/appointments")
+	status, body, _, err := janeReqAccept(ctx, b.hc, b.base+"/api/v2/appointments")
 	if err != nil {
 		return apptDetail{}, err
+	}
+	if status == 401 || status == 403 {
+		return apptDetail{}, fmt.Errorf("session expired — re-run 'auth login --clinic <name> --chrome'")
+	}
+	if status >= 400 {
+		return apptDetail{}, fmt.Errorf("fetching appointments failed (HTTP %d)", status)
 	}
 	for _, a := range parseAppointmentList(body) {
 		if int(jsonNumberToInt(a["id"])) != id {

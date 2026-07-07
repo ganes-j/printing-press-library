@@ -40,6 +40,9 @@ double-book yourself between two different clinics.`,
 			if err != nil {
 				return usageErr(fmt.Errorf("invalid --at %q: use RFC3339 or YYYY-MM-DDTHH:MM:SS", atStr))
 			}
+			if duration <= 0 {
+				return usageErr(fmt.Errorf("--duration must be a positive number of minutes"))
+			}
 			end := at.Add(time.Duration(duration) * time.Minute)
 
 			clinics, err := loggedInClinics()

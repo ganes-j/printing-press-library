@@ -161,6 +161,9 @@ practitioner, and location default to the existing appointment's; override with
 			t := pick(treatment, det.TreatmentID)
 			s := pick(staff, det.StaffMemberID)
 			l := pick(location, det.LocationID)
+			if t <= 0 || s <= 0 || l <= 0 {
+				return usageErr(fmt.Errorf("could not determine treatment/staff/location for appointment %d (got treatment=%d staff=%d location=%d); pass --treatment/--staff/--location explicitly", id, t, s, l))
+			}
 			if !confirm {
 				if flags.asJSON {
 					return printJSONFiltered(cmd.OutOrStdout(), map[string]any{"dry_run": true, "action": "reschedule", "clinic": clinic.Name, "id": id, "from": det.StartAt, "to": atStr, "treatment_id": t, "staff_member_id": s, "location_id": l}, flags)
@@ -244,7 +247,7 @@ outside a notice window (Jane will return an error in that case).`,
 				if flags.asJSON {
 					return printJSONFiltered(cmd.OutOrStdout(), map[string]any{"dry_run": true, "action": "cancel", "clinic": clinic.Name, "id": id}, flags)
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "DRY RUN — would cancel appointment %d at clinic %q via POST /api/v2/appointments/%d/cancel\n", id, clinic.Name, id)
+				fmt.Fprintf(cmd.OutOrStdout(), "DRY RUN — would cancel appointment %d at clinic %q via DELETE /api/v2/appointments/%d\n", id, clinic.Name, id)
 				fmt.Fprintln(cmd.ErrOrStderr(), "(no changes made. Re-run with --confirm to cancel.)")
 				return nil
 			}

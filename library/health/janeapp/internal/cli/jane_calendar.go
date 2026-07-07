@@ -66,16 +66,19 @@ clinic, using your imported session. Print the .ics to stdout, save it with
 			if flags.dryRun {
 				return nil
 			}
-			clinic, err := requireActiveClinic(flags)
-			if err != nil {
-				return err
-			}
-			hc, base, err := clinicAuthedClient(clinic, flags.timeout)
-			if err != nil {
-				return usageErr(err)
-			}
 
 			if showURL {
+				// The subscribe URL is per-clinic, so this path needs one active
+				// clinic. (The ICS-export path below works across --all-clinics and
+				// must not require a single active/valid clinic session.)
+				clinic, err := requireActiveClinic(flags)
+				if err != nil {
+					return err
+				}
+				hc, base, err := clinicAuthedClient(clinic, flags.timeout)
+				if err != nil {
+					return usageErr(err)
+				}
 				// Jane's native tokenized feed URL — works as a live subscription
 				// in a calendar app (which negotiates Jane's cookie gate).
 				feedURL := discoverICSSubscribeURL(cmd.Context(), hc, base)

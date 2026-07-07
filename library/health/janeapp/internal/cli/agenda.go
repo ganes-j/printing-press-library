@@ -55,7 +55,7 @@ By default it shows all logged-in clinics; pass --clinic to scope to one.`,
 			return renderAppointments(cmd, flags, recs)
 		},
 	}
-	cmd.Flags().BoolVar(&allProfiles, "all-clinics", true, "Include every logged-in clinic (default). Use --clinic to scope to one.")
+	cmd.Flags().BoolVar(&allProfiles, "all-clinics", false, "Force every logged-in clinic. Default: all clinics unless --clinic scopes to one.")
 	cmd.Flags().BoolVar(&includePast, "include-past", false, "Include past appointments too")
 	return cmd
 }
