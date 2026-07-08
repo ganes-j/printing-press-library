@@ -16819,9 +16819,9 @@
       "path": "library/marketing/trustpilot",
       "release": {
         "cli_name": "trustpilot-pp-cli",
-        "version": "2026.6.2",
-        "released_at": "2026-06-21T08:16:26Z",
-        "source_commit": "acb84091ff016c6e7aea5f8cf6956a694aa0d1c7"
+        "version": "2026.7.1",
+        "released_at": "2026-07-08T05:32:11Z",
+        "source_commit": "b969d9a78fcc70c058d8556f57ff73d32a8d8609"
       },
       "printer": "mvanhorn",
       "printer_name": "Matt Van Horn",
