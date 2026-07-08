@@ -16033,6 +16033,12 @@
         "handle": "davemorin",
         "name": "Dave Morin"
       },
+      "contributors": [
+        {
+          "handle": "mvanhorn",
+          "name": "Matt Van Horn"
+        }
+      ],
       "mcp": {
         "binary": "techmeme-pp-mcp",
         "transports": [
