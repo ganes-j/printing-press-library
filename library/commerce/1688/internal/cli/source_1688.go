@@ -50,17 +50,21 @@ func persistSearch(ctx context.Context, db *store.Store, res *mtop.SearchResult)
 		}
 		if o.SupplierMemberID != "" {
 			if sdata, err := json.Marshal(supplierFrom(o)); err == nil {
-				_ = db.Upsert("supplier", o.SupplierMemberID, sdata)
+				if err := db.Upsert("supplier", o.SupplierMemberID, sdata); err != nil {
+					return err
+				}
 			}
 		}
-		_ = db.InsertOfferSnapshot(ctx, store.OfferSnapshot{
+		if err := db.InsertOfferSnapshot(ctx, store.OfferSnapshot{
 			OfferID:       o.OfferID,
 			SyncedAt:      o.SyncedAt,
 			Keyword:       o.Keyword,
 			PriceCNY:      o.PriceCNY,
 			RepurchasePct: o.RepurchasePct,
 			BookedCount:   o.TransactionCount,
-		})
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }

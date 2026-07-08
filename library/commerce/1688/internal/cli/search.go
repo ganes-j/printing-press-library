@@ -59,9 +59,16 @@ func newSearchCmd(flags *rootFlags) *cobra.Command {
 				if dbPath == "" {
 					dbPath = defaultDBPath("1688-pp-cli")
 				}
-				if db, derr := store.OpenWithContext(ctx, dbPath); derr == nil {
-					_ = persistSearch(ctx, db, res)
-					_ = db.Close()
+				db, derr := store.OpenWithContext(ctx, dbPath)
+				if derr != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: local store not updated: %v\n", derr)
+				} else {
+					if err := persistSearch(ctx, db, res); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: local store not updated: %v\n", err)
+					}
+					if err := db.Close(); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: local store close failed: %v\n", err)
+					}
 				}
 			}
 			return emit(cmd, flags, res)
