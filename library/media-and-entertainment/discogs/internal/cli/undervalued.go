@@ -93,7 +93,12 @@ func newNovelUndervaluedCmd(flags *rootFlags) *cobra.Command {
 				}
 				_ = json.Unmarshal(data, &bi)
 				rid := bi.BasicInfo.ID
-				if rid == 0 {
+				if rid == 0 && scope != "collection" {
+					// Only wantlist rows are keyed by release id, so parsing the
+					// store key back into a release id is safe there. Collection
+					// rows are keyed by instance_id, so the same fallback would
+					// fetch stats and read/write snapshots for the wrong release —
+					// skip the row instead of guessing.
 					if v, perr := strconv.ParseInt(idStr, 10, 64); perr == nil {
 						rid = v
 					}
