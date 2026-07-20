@@ -42,9 +42,12 @@ func RegisterCodeOrchestrationTools(s *server.MCPServer) {
 
 	s.AddTool(
 		mcplib.NewTool("discogs_execute",
-			mcplib.WithDescription("Execute one discogs API endpoint by its endpoint_id (from discogs_search). Params are passed as a JSON object; path placeholders and query strings are resolved automatically."),
+			mcplib.WithDescription("Execute one discogs API endpoint by its endpoint_id (from discogs_search). Params are passed as a JSON object; path placeholders and query strings are resolved automatically. Non-read endpoints require confirm=true."),
+			mcplib.WithReadOnlyHintAnnotation(false),
+			mcplib.WithDestructiveHintAnnotation(true),
 			mcplib.WithString("endpoint_id", mcplib.Required(), mcplib.Description("Endpoint identifier returned by discogs_search (e.g., \"users.list\").")),
 			mcplib.WithObject("params", mcplib.Description("Parameters for the endpoint. Path placeholders match by name; remaining entries become query string on GET/DELETE or JSON body on POST/PUT/PATCH.")),
+			mcplib.WithBoolean("confirm", mcplib.Description("Required and must be true for POST, PUT, PATCH, and DELETE endpoints.")),
 		),
 		handleCodeOrchExecute,
 	)
@@ -745,6 +748,12 @@ func handleCodeOrchExecute(ctx context.Context, req mcplib.CallToolRequest) (*mc
 	if ep == nil {
 		return mcplib.NewToolResultError(fmt.Sprintf("unknown endpoint_id %q — call discogs_search to discover valid ids", id)), nil
 	}
+	if codeOrchRequiresConfirmation(ep.Method) {
+		confirmed, _ := args["confirm"].(bool)
+		if !confirmed {
+			return mcplib.NewToolResultError(fmt.Sprintf("endpoint %q uses %s and may modify remote Discogs data; inspect the endpoint and call again with confirm=true", id, ep.Method)), nil
+		}
+	}
 
 	params, _ := args["params"].(map[string]any)
 	if params == nil {
@@ -836,6 +845,15 @@ func handleCodeOrchExecute(ctx context.Context, req mcplib.CallToolRequest) (*mc
 		return mcplib.NewToolResultError(err.Error()), nil
 	}
 	return mcplib.NewToolResultText(bound.EndpointResponse(ep.Method, data)), nil
+}
+
+func codeOrchRequiresConfirmation(method string) bool {
+	switch strings.ToUpper(method) {
+	case "GET", "HEAD":
+		return false
+	default:
+		return true
+	}
 }
 
 // codeOrchWriteBody returns the value handed to the client layer as the
